@@ -506,10 +506,16 @@ T inner_product(typename std::vector<T>::const_iterator a_start,
         b_start, b_end, 1);
 }
 
+#ifdef CURVE_MCL_BN128
+#define FIXED_BASE_EXP_WINDOW_TABLE fixed_base_exp_window_table()
+#else
+#define FIXED_BASE_EXP_WINDOW_TABLE fixed_base_exp_window_table
+#endif
+
 template<typename T>
 size_t get_exp_window_size(const size_t num_scalars)
 {
-    if (T::fixed_base_exp_window_table.empty())
+    if (T::FIXED_BASE_EXP_WINDOW_TABLE.empty())
     {
 #ifdef LOWMEM
         return 14;
@@ -518,7 +524,7 @@ size_t get_exp_window_size(const size_t num_scalars)
 #endif
     }
     size_t window = 1;
-    for (long i = T::fixed_base_exp_window_table.size()-1; i >= 0; --i)
+    for (long i = T::FIXED_BASE_EXP_WINDOW_TABLE.size()-1; i >= 0; --i)
     {
 #ifdef DEBUG
         if (!inhibit_profiling_info)
@@ -526,7 +532,7 @@ size_t get_exp_window_size(const size_t num_scalars)
             printf("%ld %zu %zu\n", i, num_scalars, T::fixed_base_exp_window_table[i]);
         }
 #endif
-        if (T::fixed_base_exp_window_table[i] != 0 && num_scalars >= T::fixed_base_exp_window_table[i])
+        if (T::FIXED_BASE_EXP_WINDOW_TABLE[i] != 0 && num_scalars >= T::FIXED_BASE_EXP_WINDOW_TABLE[i])
         {
             window = i+1;
             break;

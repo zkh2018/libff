@@ -97,13 +97,19 @@ T fixed_window_wnaf_exp(const size_t window_size, const T &base, const bigint<n>
     return res;
 }
 
+#ifdef CURVE_MCL_BN128
+#define WNAF_WINDOW_TABLE wnaf_window_table()
+#else
+#define WNAF_WINDOW_TABLE wnaf_window_table
+#endif
+
 template<typename T, mp_size_t n>
 T opt_window_wnaf_exp(const T &base, const bigint<n> &scalar, const size_t scalar_bits)
 {
     size_t best = 0;
-    for (long i = T::wnaf_window_table.size() - 1; i >= 0; --i)
+    for (long i = T::WNAF_WINDOW_TABLE.size() - 1; i >= 0; --i)
     {
-        if (scalar_bits >= T::wnaf_window_table[i])
+        if (scalar_bits >= T::WNAF_WINDOW_TABLE[i])
         {
             best = i+1;
             break;

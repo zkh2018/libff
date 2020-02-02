@@ -23,6 +23,14 @@ typedef alt_bn128_pp default_ec_pp;
 } // libff
 #endif
 
+#ifdef CURVE_MCL_BN128
+#define LIBFF_DEFAULT_EC_PP_DEFINED
+#include "libff/algebra/curves/mcl_bn128/mcl_bn128_pp.hpp"
+namespace libff {
+typedef mcl_bn128_pp default_ec_pp;
+} // libsnark
+#endif
+
 #ifdef CURVE_BN128
 #define LIBFF_DEFAULT_EC_PP_DEFINED
 #include <libff/algebra/curves/bn128/bn128_pp.hpp>
