@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <vector>
+#include "prover_config.hpp"
 
 namespace libff {
 
@@ -58,7 +59,8 @@ T multi_exp(typename std::vector<T>::const_iterator vec_start,
             typename std::vector<T>::const_iterator vec_end,
             typename std::vector<FieldT>::const_iterator scalar_start,
             typename std::vector<FieldT>::const_iterator scalar_end,
-            const size_t chunks);
+            std::vector<bigint<FieldT::num_limbs>>& scratch_exponents,
+            const libsnark::Config& config = libsnark::Config());
 
 
 /**
@@ -72,7 +74,8 @@ T multi_exp_with_mixed_addition(typename std::vector<T>::const_iterator vec_star
                                 typename std::vector<T>::const_iterator vec_end,
                                 typename std::vector<FieldT>::const_iterator scalar_start,
                                 typename std::vector<FieldT>::const_iterator scalar_end,
-                                const size_t chunks);
+                                std::vector<bigint<FieldT::num_limbs>>& scratch_exponents,
+                                const libsnark::Config& config = libsnark::Config());
 
 /**
  * A convenience function for calculating a pure inner product, where the

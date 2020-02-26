@@ -25,6 +25,8 @@
 #include <libff/common/profiling.hpp>
 #include <libff/common/utils.hpp>
 
+#include "prover_config.hpp"
+
 namespace libff {
 
 template<mp_size_t n>
@@ -162,6 +164,22 @@ T multi_exp_inner(
     return result;
 }
 
+static inline size_t get_id(size_t c, size_t bitno, const mp_limb_t* data)
+{
+    static const mp_limb_t one = 1;
+    const mp_limb_t mask = (one << c) - one;
+    const size_t limb_num_bits = sizeof(mp_limb_t) * 8;
+
+    const size_t part = bitno / limb_num_bits;
+    const size_t bit = bitno % limb_num_bits;
+    size_t id = (data[part] & (mask << bit)) >> bit;
+    //const mp_limb_t next_data = (bit + c >= limb_num_bits && part < 3) ? bn_exponents[i].data[part+1] : 0;
+    //id |= (next_data & (mask >> (limb_num_bits - bit))) << (limb_num_bits - bit);
+    id |= (((bit + c >= limb_num_bits && part < 3) ? data[part+1] : 0) & (mask >> (limb_num_bits - bit))) << (limb_num_bits - bit);
+
+    return id;
+}
+
 template<typename T, typename FieldT, multi_exp_method Method,
     typename std::enable_if<(Method == multi_exp_method_BDLO12), int>::type = 0>
 T multi_exp_inner(
@@ -177,64 +195,47 @@ T multi_exp_inner(
     size_t log2_length = log2(length);
     size_t c = log2_length - (log2_length / 3 - 2);
 
+    c = 16;
+
     const mp_size_t exp_num_limbs =
         std::remove_reference<decltype(*exponents)>::type::num_limbs;
     std::vector<bigint<exp_num_limbs> > bn_exponents(length);
     size_t num_bits = 0;
 
+    enter_block("Convert to bigint");
     for (size_t i = 0; i < length; i++)
     {
         bn_exponents[i] = exponents[i].as_bigint();
         num_bits = std::max(num_bits, bn_exponents[i].num_bits());
     }
+    leave_block("Convert to bigint");
 
     size_t num_groups = (num_bits + c - 1) / c;
 
     T result;
-    bool result_nonzero = false;
+
+    std::vector<T> buckets(1 << c);
 
     for (size_t k = num_groups - 1; k <= num_groups; k--)
     {
-        if (result_nonzero)
+        for (size_t i = 0; i < c; i++)
         {
-            for (size_t i = 0; i < c; i++)
-            {
-                result = result.dbl();
-            }
+            result = result.dbl();
         }
-
-        std::vector<T> buckets(1 << c);
-        std::vector<bool> bucket_nonzero(1 << c);
 
         for (size_t i = 0; i < length; i++)
         {
-            size_t id = 0;
-            for (size_t j = 0; j < c; j++)
-            {
-                if (bn_exponents[i].test_bit(k*c + j))
-                {
-                    id |= 1 << j;
-                }
-            }
-
+            size_t id = get_id(c, k*c, bn_exponents[i].data);
             if (id == 0)
             {
                 continue;
             }
 
-            if (bucket_nonzero[id])
-            {
 #ifdef USE_MIXED_ADDITION
-                buckets[id] = buckets[id].mixed_add(bases[i]);
+            buckets[id] = buckets[id].mixed_add(bases[i]);
 #else
-                buckets[id] = buckets[id] + bases[i];
+            buckets[id] = buckets[id] + bases[i];
 #endif
-            }
-            else
-            {
-                buckets[id] = bases[i];
-                bucket_nonzero[id] = true;
-            }
         }
 
 #ifdef USE_MIXED_ADDITION
@@ -242,39 +243,15 @@ T multi_exp_inner(
 #endif
 
         T running_sum;
-        bool running_sum_nonzero = false;
-
         for (size_t i = (1u << c) - 1; i > 0; i--)
         {
-            if (bucket_nonzero[i])
-            {
-                if (running_sum_nonzero)
-                {
 #ifdef USE_MIXED_ADDITION
-                    running_sum = running_sum.mixed_add(buckets[i]);
+            running_sum = running_sum.mixed_add(buckets[i]);
 #else
-                    running_sum = running_sum + buckets[i];
+            running_sum = running_sum + buckets[i];
 #endif
-                }
-                else
-                {
-                    running_sum = buckets[i];
-                    running_sum_nonzero = true;
-                }
-            }
-
-            if (running_sum_nonzero)
-            {
-                if (result_nonzero)
-                {
-                    result = result + running_sum;
-                }
-                else
-                {
-                    result = running_sum;
-                    result_nonzero = true;
-                }
-            }
+            buckets[i] = T::zero();
+            result = result + running_sum;
         }
     }
 
@@ -399,100 +376,341 @@ T multi_exp_inner(
     return opt_result;
 }
 
-template<typename T, typename FieldT, multi_exp_method Method>
-T multi_exp(typename std::vector<T>::const_iterator vec_start,
-            typename std::vector<T>::const_iterator vec_end,
-            typename std::vector<FieldT>::const_iterator scalar_start,
-            typename std::vector<FieldT>::const_iterator scalar_end,
-            const size_t chunks)
+template<unsigned int locality>
+static inline void prefetch_range(char* addr, size_t len, unsigned int prefetch_stride)
 {
-    const size_t total = vec_end - vec_start;
-    if ((total < chunks) || (chunks == 1))
+    char *cp;
+    char *end = addr + len;
+    for (cp = addr; cp < end; cp += prefetch_stride)
     {
-        // no need to split into "chunks", can call implementation directly
-        return multi_exp_inner<T, FieldT, Method>(
-            vec_start, vec_end, scalar_start, scalar_end);
+        __builtin_prefetch(cp, 1, locality);
+    }
+}
+
+#if 0
+template<typename T, typename FieldT, bool prefetch, unsigned int prefetch_locality>
+T multi_exp_inner_bellman(
+    typename std::vector<T>::const_iterator bases,
+    typename std::vector<T>::const_iterator bases_end,
+    const std::vector<bigint<4>>& exponents,
+    unsigned int c,
+    unsigned int k,
+    unsigned int prefetch_stride,
+    unsigned int look_ahead)
+{
+    size_t length = bases_end - bases;
+
+    std::vector<T> buckets(1 << c);
+
+#if 1
+    for (size_t i = 0; i < length; i++)
+    {
+        if (prefetch)
+        {
+            // prefetch next bucket
+            if (i < length - look_ahead)
+            {
+                size_t next_id = get_id(c, k*c, &exponents[i+look_ahead].data[0]);
+                if (next_id != 0)
+                {
+                    prefetch_range<prefetch_locality>((char*) &buckets[next_id], sizeof(T), prefetch_stride);
+                }
+            }
+        }
+        size_t id = get_id(c, k*c, &exponents[i].data[0]);
+        if (id != 0)
+        {
+            buckets[id] = buckets[id] + bases[i];
+        }
+    }
+#else
+    size_t id = get_id(c, k*c, &exponents[0].data[0]);
+    size_t next_id;
+    size_t i = 0;
+    while(i < length)
+    {
+        size_t j = i + 1;
+        while(j < length)
+        {
+            next_id = get_id(c, k*c, &exponents[j].data[0]);
+            if (next_id != 0)
+            {
+                if (prefetch)
+                {
+                    // prefetch next bucket
+                    prefetch_range<prefetch_locality>((char*) &buckets[next_id], sizeof(T), prefetch_stride);
+                }
+                break;
+            }
+            j++;
+        }
+
+        if (id != 0)
+        {
+            buckets[id] = buckets[id] + bases[i];
+        }
+        id = next_id;
+        i = j;
+    }
+#endif
+
+    T result;
+    T running_sum;
+    for (size_t i = (1u << c) - 1; i > 0; i--)
+    {
+        running_sum = running_sum + buckets[i];
+        result = result + running_sum;
     }
 
-    const size_t one = total/chunks;
+    return result;
+}
+#endif
 
+template<typename T, typename FieldT, bool with_density, bool prefetch, unsigned int prefetch_locality>
+T multi_exp_inner_bellman_with_density(
+    typename std::vector<T>::const_iterator bases,
+    typename std::vector<T>::const_iterator bases_end,
+    const std::vector<bigint<4>>& exponents,
+    const std::vector<bool>& density,
+    unsigned int c,
+    unsigned int k,
+    unsigned int prefetch_stride,
+    unsigned int look_ahead)
+{
+    size_t length = bases_end - bases;
+
+    std::vector<T> buckets(1 << c);
+    for (size_t i = 0; i < length; i++)
+    {
+        if (with_density)
+        {
+            if (!density[i])
+            {
+                continue;
+            }
+        }
+
+        if (prefetch)
+        {
+            // prefetch next bucket
+            if (i < length - look_ahead)
+            {
+                size_t next_id = get_id(c, k*c, &exponents[i+look_ahead].data[0]);
+                if (next_id != 0)
+                {
+                    prefetch_range<prefetch_locality>((char*) &buckets[next_id], sizeof(T), prefetch_stride);
+                }
+            }
+        }
+        size_t id = get_id(c, k*c, &exponents[i].data[0]);
+        if (id != 0)
+        {
+            buckets[id] = buckets[id] + bases[i];
+        }
+    }
+
+    T result;
+    T running_sum;
+    for (size_t i = (1u << c) - 1; i > 0; i--)
+    {
+        running_sum = running_sum + buckets[i];
+        result = result + running_sum;
+    }
+
+    return result;
+}
+
+template<typename T, typename FieldT, bool with_density, multi_exp_method Method>
+T multi_exp_with_density(typename std::vector<T>::const_iterator vec_start,
+            typename std::vector<T>::const_iterator vec_end,
+            const std::vector<bigint<FieldT::num_limbs>>& exponents,
+            const std::vector<bool>& density,
+            const libsnark::Config& config)
+{
+    unsigned int chunks = config.num_threads;
+    const size_t total = vec_end - vec_start;
+
+    unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
+    chunks = (254 + c - 1) / c;
+
+    auto ranges = libsnark::get_cpu_ranges(0, total);
     std::vector<T> partial(chunks, T::zero());
-
 #ifdef MULTICORE
 #pragma omp parallel for
 #endif
     for (size_t i = 0; i < chunks; ++i)
     {
-        partial[i] = multi_exp_inner<T, FieldT, Method>(
-             vec_start + i*one,
-             (i == chunks-1 ? vec_end : vec_start + (i+1)*one),
-             scalar_start + i*one,
-             (i == chunks-1 ? scalar_end : scalar_start + (i+1)*one));
+        switch(config.multi_exp_prefetch_locality)
+        {
+            case 0:
+            {
+                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, true, 0>(
+                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead
+                );
+                break;
+            }
+            case 1:
+            {
+                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, true, 1>(
+                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead
+                );
+                break;
+            }
+            case 2:
+            {
+                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, true, 2>(
+                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead
+                );
+                break;
+            }
+            case 3:
+            {
+                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, true, 3>(
+                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead
+                );
+                break;
+            }
+            default:
+            {
+                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, false, 0>(
+                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead
+                );
+                break;
+            }
+        }
     }
 
-    T final = T::zero();
-
-    for (size_t i = 0; i < chunks; ++i)
+    T final = partial[chunks - 1];
+    for (int i = chunks - 2; i >= 0; i--)
     {
+        for (size_t j = 0; j < c; j++)
+        {
+            final = final.dbl();
+        }
         final = final + partial[i];
     }
-
     return final;
 }
+
+template<typename T, typename FieldT, multi_exp_method Method>
+T multi_exp(typename std::vector<T>::const_iterator vec_start,
+            typename std::vector<T>::const_iterator vec_end,
+            typename std::vector<FieldT>::const_iterator scalar_start,
+            typename std::vector<FieldT>::const_iterator scalar_end,
+            std::vector<bigint<FieldT::num_limbs>>& scratch_exponents,
+            const libsnark::Config& config)
+{
+    const size_t total = vec_end - vec_start;
+    std::vector<bigint<FieldT::num_limbs>>& bn_exponents = scratch_exponents;
+    if (bn_exponents.size() < total)
+    {
+        bn_exponents.resize(total);
+    }
+
+    enter_block("Convert to bigint");
+    auto ranges = libsnark::get_cpu_ranges(0, total);
+#ifdef MULTICORE
+    #pragma omp parallel for
+#endif
+    for (size_t j = 0; j < ranges.size(); j++)
+    {
+        for (unsigned int i = ranges[j].first; i < ranges[j].second; i++)
+        {
+            bn_exponents[i] = scalar_start[i].as_bigint();
+        }
+    }
+    leave_block("Convert to bigint");
+
+    // Dummy density vector
+    std::vector<bool> density;
+    return multi_exp_with_density<T, FieldT, false, Method>(vec_start, vec_end, bn_exponents, density, config);
+}
+
+
 
 template<typename T, typename FieldT, multi_exp_method Method>
 T multi_exp_with_mixed_addition(typename std::vector<T>::const_iterator vec_start,
                                 typename std::vector<T>::const_iterator vec_end,
                                 typename std::vector<FieldT>::const_iterator scalar_start,
                                 typename std::vector<FieldT>::const_iterator scalar_end,
-                                const size_t chunks)
+                                std::vector<libff::bigint<FieldT::num_limbs>>& scratch_exponents,
+                                const libsnark::Config& config)
 {
     assert(std::distance(vec_start, vec_end) == std::distance(scalar_start, scalar_end));
     enter_block("Process scalar vector");
-    auto value_it = vec_start;
-    auto scalar_it = scalar_start;
 
     const FieldT zero = FieldT::zero();
     const FieldT one = FieldT::one();
-    std::vector<FieldT> p;
-    std::vector<T> g;
+
+    //size_t num_skip = 0;
+    //size_t num_add = 0;
+    //size_t num_other = 0;
+
+    const size_t scalar_length = std::distance(scalar_start, scalar_end);
+
+    libff::enter_block("allocate density memory");
+    std::vector<bool> density(scalar_length);
+    libff::leave_block("allocate density memory");
+
+    std::vector<bigint<FieldT::num_limbs>>& bn_exponents = scratch_exponents;
+    if (bn_exponents.size() < scalar_length)
+    {
+        bn_exponents.resize(scalar_length);
+    }
+
+    auto ranges = libsnark::get_cpu_ranges(0, scalar_length);
+    std::vector<T> partial(ranges.size(), T::zero());
+    std::vector<unsigned int> counters(ranges.size(), 0);
+
+#ifdef MULTICORE
+    #pragma omp parallel for
+#endif
+    for (size_t j = 0; j < ranges.size(); j++)
+    {
+        T result = T::zero();
+        unsigned int count = 0;
+        for (unsigned int i = ranges[j].first; i < ranges[j].second; i++)
+        {
+            if (scalar_start[i] == zero)
+            {
+                // do nothing
+                //++num_skip;
+            }
+            else if (scalar_start[i] == one)
+            {
+#ifdef USE_MIXED_ADDITION
+                result = result.mixed_add(vec_start[i]);
+#else
+                result = result + vec_start[i];
+#endif
+                //++num_add;
+            }
+            else
+            {
+                //if (vec_start[i] != T::zero())
+                {
+                    density[i] = true;
+                    bn_exponents[i] = scalar_start[i].as_bigint();
+                    ++count;
+                }
+                //++num_other;
+            }
+        }
+        partial[j] = result;
+        counters[j] = count;
+    }
 
     T acc = T::zero();
-
-    size_t num_skip = 0;
-    size_t num_add = 0;
-    size_t num_other = 0;
-
-    for (; scalar_it != scalar_end; ++scalar_it, ++value_it)
+    unsigned int totalCount = 0;
+    for (unsigned int i = 0; i < ranges.size(); i++)
     {
-        if (*scalar_it == zero)
-        {
-            // do nothing
-            ++num_skip;
-        }
-        else if (*scalar_it == one)
-        {
-#ifdef USE_MIXED_ADDITION
-            acc = acc.mixed_add(*value_it);
-#else
-            acc = acc + (*value_it);
-#endif
-            ++num_add;
-        }
-        else
-        {
-            p.emplace_back(*scalar_it);
-            g.emplace_back(*value_it);
-            ++num_other;
-        }
+        acc = acc + partial[i];
+        totalCount += counters[i];
     }
-    print_indent(); printf("* Elements of w skipped: %zu (%0.2f%%)\n", num_skip, 100.*num_skip/(num_skip+num_add+num_other));
-    print_indent(); printf("* Elements of w processed with special addition: %zu (%0.2f%%)\n", num_add, 100.*num_add/(num_skip+num_add+num_other));
-    print_indent(); printf("* Elements of w remaining: %zu (%0.2f%%)\n", num_other, 100.*num_other/(num_skip+num_add+num_other));
 
     leave_block("Process scalar vector");
 
-    return acc + multi_exp<T, FieldT, Method>(g.begin(), g.end(), p.begin(), p.end(), chunks);
+    return acc + multi_exp_with_density<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config);
 }
 
 template <typename T>
@@ -529,7 +747,7 @@ size_t get_exp_window_size(const size_t num_scalars)
 #ifdef DEBUG
         if (!inhibit_profiling_info)
         {
-            printf("%ld %zu %zu\n", i, num_scalars, T::fixed_base_exp_window_table[i]);
+            //printf("%ld %zu %zu\n", i, num_scalars, T::fixed_base_exp_window_table[i]);
         }
 #endif
         if (T::FIXED_BASE_EXP_WINDOW_TABLE[i] != 0 && num_scalars >= T::FIXED_BASE_EXP_WINDOW_TABLE[i])
