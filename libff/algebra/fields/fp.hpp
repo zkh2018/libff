@@ -72,6 +72,7 @@ public:
     void set_ulong(const unsigned long x);
 
     void mul_reduce(const bigint<n> &other);
+    const bigint<n>& get_modulus() const;
 
     void clear();
 

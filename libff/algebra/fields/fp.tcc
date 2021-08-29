@@ -161,7 +161,6 @@ void Fp_model<n,modulus>::mul_reduce(const bigint<n> &other)
     {
         mp_limb_t res[2*n];
         mpn_mul_n(res, this->mont_repr.data, other.data, n);
-
         /*
           The Montgomery reduction here is based on Algorithm 14.32 in
           Handbook of Applied Cryptography
@@ -184,6 +183,11 @@ void Fp_model<n,modulus>::mul_reduce(const bigint<n> &other)
 
         mpn_copyi(this->mont_repr.data, res+n, n);
     }
+}
+
+template<mp_size_t n, const bigint<n>& modulus>
+const bigint<n>& Fp_model<n,modulus>::get_modulus() const {
+  return modulus;
 }
 
 template<mp_size_t n, const bigint<n>& modulus>
@@ -406,12 +410,26 @@ Fp_model<n,modulus>& Fp_model<n,modulus>::operator+=(const Fp_model<n,modulus>& 
         mp_limb_t scratch[n+1];
         const mp_limb_t carry = mpn_add_n(scratch, this->mont_repr.data, other.mont_repr.data, n);
         scratch[n] = carry;
+				//this->mont_repr.gpu_buf.resize(1);
+				//const_cast<Fp_model<n,modulus>&>(other).mont_repr.gpu_buf.resize(1);
 
-        if (carry || mpn_cmp(scratch, modulus.data, n) >= 0)
-        {
-            const mp_limb_t borrow = mpn_sub(scratch, scratch, n+1, modulus.data, n);
-            assert(borrow == 0);
-        }
+        //if (carry || mpn_cmp(scratch, modulus.data, n) >= 0)
+        //{
+        //    const mp_limb_t borrow = mpn_sub(scratch, scratch, n+1, modulus.data, n);
+        //    assert(borrow == 0);
+        //}
+				if(carry){
+					const mp_limb_t borrow = mpn_sub(scratch, scratch, n, modulus.data, n);
+					if(borrow < 0){
+						mp_limb_t tmp_scratch[n] = {0xFFFFFFFF};
+						mpn_sub(tmp_scratch, tmp_scratch, n, scratch, n);
+						mpn_add_1(scratch, tmp_scratch, n, borrow);
+					}
+				}else if(mpn_cmp(scratch, modulus.data, n) >= 0){
+					mpn_sub(scratch, scratch, n, modulus.data, n);
+				}else{
+					//do nothing
+				}
 
         mpn_copyi(this->mont_repr.data, scratch, n);
     }

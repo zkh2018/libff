@@ -53,6 +53,7 @@ public:
     bool operator==(const alt_bn128_G2 &other) const;
     bool operator!=(const alt_bn128_G2 &other) const;
 
+    alt_bn128_G2 gpu_add(const alt_bn128_G2 &other) const;
     alt_bn128_G2 operator+(const alt_bn128_G2 &other) const;
     alt_bn128_G2 operator-() const;
     alt_bn128_G2 operator-(const alt_bn128_G2 &other) const;

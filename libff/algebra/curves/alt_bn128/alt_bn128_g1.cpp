@@ -6,6 +6,9 @@
  *****************************************************************************/
 
 #include <libff/algebra/curves/alt_bn128/alt_bn128_g1.hpp>
+#include "cgbn_math.h"
+#include "cgbn_fp.h"
+#include "cgbn_alt_bn128_g1.h"
 
 namespace libff {
 
@@ -136,6 +139,63 @@ bool alt_bn128_G1::operator!=(const alt_bn128_G1& other) const
     return !(operator==(other));
 }
 
+alt_bn128_G1 alt_bn128_G1::gpu_add(const alt_bn128_G1 &other) const
+{
+
+  //call gpu 
+  gpu::alt_bn128_g1 da, db, dc;
+  const int data_num = 1;
+  da.init(data_num);
+  db.init(data_num);
+  dc.init(data_num);
+  auto copy = [](const alt_bn128_G1& src, gpu::alt_bn128_g1& dst){
+    gpu::copy_cpu_to_gpu(dst.x.mont_repr_data, src.X.mont_repr.data, 32);
+    auto *p = src.X.get_modulus().data;
+    gpu::copy_cpu_to_gpu(dst.x.modulus_data, p, 32);
+    dst.x.inv = src.X.inv;
+
+    gpu::copy_cpu_to_gpu(dst.y.mont_repr_data, src.Y.mont_repr.data, 32);
+    gpu::copy_cpu_to_gpu(dst.y.modulus_data, src.Y.get_modulus().data, 32);
+    dst.y.inv = src.Y.inv;
+
+    gpu::copy_cpu_to_gpu(dst.z.mont_repr_data, src.Z.mont_repr.data, 32);
+    gpu::copy_cpu_to_gpu(dst.z.modulus_data, src.Z.get_modulus().data, 32);
+    dst.z.inv = src.Z.inv;
+  };
+  auto copy_back = [&](alt_bn128_G1& dst, const gpu::alt_bn128_g1& src){
+    gpu::copy_gpu_to_cpu(dst.X.mont_repr.data, src.x.mont_repr_data, 32);
+    gpu::copy_gpu_to_cpu(dst.Y.mont_repr.data, src.y.mont_repr_data, 32);
+    gpu::copy_gpu_to_cpu(dst.Z.mont_repr.data, src.z.mont_repr_data, 32);
+  };
+
+  copy(*this, da);
+  copy(other, db);
+
+  uint32_t *gpu_res;
+  gpu::gpu_malloc((void**)&gpu_res, data_num * BITS/32*3 * sizeof(uint32_t));
+  gpu::gpu_buffer tmp_buffer, max_value, dmax_value;
+  tmp_buffer.resize(data_num);
+  max_value.resize_host(1);
+  dmax_value.resize(1);
+  for(int i = 0; i < BITS/32; i++){
+    max_value.ptr->_limbs[i] = 0xffffffff;
+  }
+  dmax_value.copy_from_host(max_value);
+  gpu::alt_bn128_g1_add(da, db, dc, data_num, gpu_res, tmp_buffer.ptr, dmax_value.ptr, false);
+
+  alt_bn128_G1 ret;
+  copy_back(ret, dc);
+
+  gpu::gpu_free(gpu_res);
+  tmp_buffer.release();
+  dmax_value.release();
+  max_value.release_host();
+  da.release();
+  db.release();
+  dc.release();
+  return ret;
+}
+
 alt_bn128_G1 alt_bn128_G1::operator+(const alt_bn128_G1 &other) const
 {
     // handle special cases having to do with O
@@ -160,7 +220,6 @@ alt_bn128_G1 alt_bn128_G1::operator+(const alt_bn128_G1 &other) const
     // X1/Z1^2 == X2/Z2^2 and Y1/Z1^3 == Y2/Z2^3
     // iff
     // X1 * Z2^2 == X2 * Z1^2 and Y1 * Z2^3 == Y2 * Z1^3
-
     alt_bn128_Fq Z1Z1 = (this->Z).squared();
     alt_bn128_Fq Z2Z2 = (other.Z).squared();
 
