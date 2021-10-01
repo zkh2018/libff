@@ -151,16 +151,16 @@ alt_bn128_G1 alt_bn128_G1::gpu_add(const alt_bn128_G1 &other) const
   auto copy = [](const alt_bn128_G1& src, gpu::alt_bn128_g1& dst){
     gpu::copy_cpu_to_gpu(dst.x.mont_repr_data, src.X.mont_repr.data, 32);
     auto *p = src.X.get_modulus().data;
-    gpu::copy_cpu_to_gpu(dst.x.modulus_data, p, 32);
-    dst.x.inv = src.X.inv;
+    //gpu::copy_cpu_to_gpu(dst.x.modulus_data, p, 32);
+    //dst.x.inv = src.X.inv;
 
     gpu::copy_cpu_to_gpu(dst.y.mont_repr_data, src.Y.mont_repr.data, 32);
-    gpu::copy_cpu_to_gpu(dst.y.modulus_data, src.Y.get_modulus().data, 32);
-    dst.y.inv = src.Y.inv;
+    //gpu::copy_cpu_to_gpu(dst.y.modulus_data, src.Y.get_modulus().data, 32);
+    //dst.y.inv = src.Y.inv;
 
     gpu::copy_cpu_to_gpu(dst.z.mont_repr_data, src.Z.mont_repr.data, 32);
-    gpu::copy_cpu_to_gpu(dst.z.modulus_data, src.Z.get_modulus().data, 32);
-    dst.z.inv = src.Z.inv;
+    //gpu::copy_cpu_to_gpu(dst.z.modulus_data, src.Z.get_modulus().data, 32);
+    //dst.z.inv = src.Z.inv;
   };
   auto copy_back = [&](alt_bn128_G1& dst, const gpu::alt_bn128_g1& src){
     gpu::copy_gpu_to_cpu(dst.X.mont_repr.data, src.x.mont_repr_data, 32);
@@ -171,23 +171,21 @@ alt_bn128_G1 alt_bn128_G1::gpu_add(const alt_bn128_G1 &other) const
   copy(*this, da);
   copy(other, db);
 
-  uint32_t *gpu_res;
-  gpu::gpu_malloc((void**)&gpu_res, data_num * BITS/32*3 * sizeof(uint32_t));
-  gpu::gpu_buffer tmp_buffer, max_value, dmax_value;
-  tmp_buffer.resize(data_num);
+  gpu::gpu_buffer max_value, dmax_value, d_modulus;
   max_value.resize_host(1);
   dmax_value.resize(1);
+  d_modulus.resize(1);
   for(int i = 0; i < BITS/32; i++){
     max_value.ptr->_limbs[i] = 0xffffffff;
   }
   dmax_value.copy_from_host(max_value);
-  gpu::alt_bn128_g1_add(da, db, dc, data_num, gpu_res, tmp_buffer.ptr, dmax_value.ptr, false);
+  const uint64_t const_inv = this->X.inv;
+  gpu::copy_cpu_to_gpu(d_modulus.ptr->_limbs, this->X.get_modulus().data, 32);
+  gpu::alt_bn128_g1_add(da, db, dc, data_num, dmax_value.ptr, d_modulus.ptr, const_inv);
 
   alt_bn128_G1 ret;
   copy_back(ret, dc);
 
-  gpu::gpu_free(gpu_res);
-  tmp_buffer.release();
   dmax_value.release();
   max_value.release_host();
   da.release();

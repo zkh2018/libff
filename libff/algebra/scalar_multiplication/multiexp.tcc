@@ -544,28 +544,28 @@ T multi_exp_with_density(typename std::vector<T>::const_iterator vec_start,
         {
             case 0:
             {
-                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, true, 0>(
+                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, false, 0>(
                     vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead
                 );
                 break;
             }
             case 1:
             {
-                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, true, 1>(
+                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, false, 1>(
                     vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead
                 );
                 break;
             }
             case 2:
             {
-                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, true, 2>(
+                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, false, 2>(
                     vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead
                 );
                 break;
             }
             case 3:
             {
-                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, true, 3>(
+                partial[i] = multi_exp_inner_bellman_with_density<T, FieldT, with_density, false, 3>(
                     vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead
                 );
                 break;
