@@ -525,7 +525,7 @@ T multi_exp_inner_bellman_with_density(
     return result;
 }
 
-template<typename T, typename FieldT, bool with_density, bool prefetch, unsigned int prefetch_locality>
+template<typename T, typename FieldT, bool with_density>
 T multi_exp_inner_bellman_with_density_gpu(
     typename std::vector<T>::const_iterator bases,
     typename std::vector<T>::const_iterator bases_end,
@@ -545,93 +545,6 @@ T multi_exp_inner_bellman_with_density_gpu(
     auto f = [](clock_t t1, clock_t t0){
       return (double)(t1-t0)/CLOCKS_PER_SEC;
     };
-    //64*1024*16
-    if(false){
-      T zero = T::zero();
-      std::vector<T> buckets(1 << c);
-      std::vector<int> bucket_counters((1<<c), 0);
-      std::vector<T> values(length);
-      int max_bucket_num = 0;
-      clock_t t0 = clock();
-      for (size_t i = 0; i < length; i++)
-      {
-        if (with_density)
-        {
-          if (!density[i])
-          {
-            continue;
-          }
-        }
-
-        size_t id = get_id(c, k*c, &exponents[i].data[0]);
-        if (id != 0)
-        {
-          //buckets[id] = buckets[id] + bases[i];
-          bucket_counters[id]++;
-          max_bucket_num = std::max(max_bucket_num, bucket_counters[id]);
-        }
-      }
-      clock_t t1 = clock();
-      printf("max_bucket_num = %d\n", max_bucket_num);//1800
-      std::vector<int> starts(1<<c), indexs(1 << c);
-      starts[0] = 0;
-      int offset = bucket_counters[0];
-      int bucket_num_zero = 0;
-      int min_bucket_num = 0;
-      for(int i = 1; i < (1<<c); i++){
-        starts[i] = offset;
-        indexs[i] = offset;
-        offset += bucket_counters[i];
-        if(bucket_counters[i] == 0) bucket_num_zero++;
-        if(bucket_counters[i]){
-          min_bucket_num = std::min(min_bucket_num, bucket_counters[i]);
-        }
-      }
-      clock_t t2 = clock();
-      printf("bucket_num_zero = %d, min_bucket_num = %d\n", bucket_num_zero, min_bucket_num);
-      for(size_t i = 0; i < length; i++){
-        if(with_density) {
-          if(!density[i]){
-            continue;
-          }
-        }
-        size_t id = get_id(c, k*c, &exponents[i].data[0]);
-        if (id != 0)
-        {
-          int index = indexs[id]++;
-          values[index] = bases[i];
-        }
-      }
-      clock_t t3 = clock();
-      for(int i = 0; i < (1<<c); i++){
-        T result;
-        for(int b = 0; b < instances; b++){
-          T result0;
-          for(int j = b + starts[i]; j < indexs[i]; j+= instances){
-            result0 = result0 + values[j];
-          }
-          result = result + result0;
-        }
-        buckets[i] = result;
-        //for(int j = starts[i]; j < indexs[i]; j++){
-        //  buckets[i] = buckets[i] + values[j];
-        //} 
-      }
-      clock_t t4 = clock();
-
-      T running_sum = buckets[(1<<c)-1];
-      T result = running_sum;
-      std::vector<T> prefix_sum_vec(1<<c);
-      prefix_sum_vec[0] = running_sum;
-      for (size_t i = (1u << c) - 2, j = 1; i > 0; i--, j++)
-      {
-        running_sum = running_sum + buckets[i];
-        prefix_sum_vec[j] = running_sum;
-        result = result + running_sum;
-      }
-      clock_t t5 = clock();
-      printf("%f %f %f %f %f\n", f(t1, t0), f(t2, t1), f(t3, t2), f(t4, t3), f(t5, t4));
-    }
     if(true){
       static int* gpu_bucket_counters = nullptr, *gpu_starts = nullptr, *gpu_indexs;
       static gpu::alt_bn128_g1 d_values2, d_buckets, d_buckets2, d_t_zero, d_block_sums, d_block_sums2;
@@ -673,75 +586,27 @@ T multi_exp_inner_bellman_with_density_gpu(
       clock_t t0 = clock();
       gpu::gpu_set_zero(gpu_bucket_counters, (1<<c)*sizeof(int));
       gpu::bucket_counter(d_density, d_bn_exponents.ptr, c, k, length, (1<<c), gpu_bucket_counters);
-      //clock_t t1 = clock();
       gpu::prefix_sum(gpu_bucket_counters, gpu_starts, 1<<c);
       gpu::copy_gpu_to_gpu(gpu_indexs, gpu_starts, (1<<c) * sizeof(int));
-      //clock_t t2 = clock();
       gpu::split_to_bucket(d_values, d_values2, d_density, d_bn_exponents.ptr, c, k, length, gpu_indexs);
-      //clock_t t3 = clock();
       d_buckets.clear();
       gpu::bucket_reduce_sum(d_values2, gpu_starts, gpu_indexs, d_buckets, 1<<c, d_max_value.ptr, d_t_zero, d_modulus.ptr, const_inv);
-      //clock_t t4 = clock();
-      //gpu::prefix_sum(d_buckets, d_buckets2, d_block_sums, 1<<c, instances, d_max_value.ptr, d_modulus.ptr, const_inv);
       gpu::reverse(d_buckets, d_buckets2, 1<<c, instances);
+      clock_t t1 = clock();
       gpu::prefix_sum(d_buckets2, d_block_sums, d_block_sums2, 1<<c, d_max_value.ptr, d_modulus.ptr, const_inv);
-      gpu::alt_bn128_g1_reduce_sum(d_buckets2, d_buckets, 1<<c, d_max_value.ptr, d_modulus.ptr, const_inv);
-      const int local_instances = 64 * BlockDepth;
+      clock_t t2 = clock();
+      gpu::alt_bn128_g1_reduce_sum2(d_buckets2, d_buckets, (1<<c), d_max_value.ptr, d_modulus.ptr, const_inv);
       T tmp_result;
-      for(int i = 0; i < (1<<c)/local_instances; i++){
+      copy_back(tmp_result, d_buckets, 0);
+      for(int i = 1; i < 16; i++){
         T value;
-        copy_back(value, d_buckets, i * local_instances);
+        copy_back(value, d_buckets, i);
         tmp_result = tmp_result + value;
       }
-      clock_t t5 = clock();
-      printf("%f\n", f(t5, t0));
-
-      //std::vector<int> tmp_counters(1<<c, 0), tmp_starts(1<<c), tmp_indexs(1<<c);
-      //gpu::copy_gpu_to_cpu(tmp_counters.data(), gpu_bucket_counters, (1<<c)*sizeof(int));
-      //gpu::copy_gpu_to_cpu(tmp_starts.data(), gpu_starts, (1<<c)*sizeof(int));
-      //gpu::copy_gpu_to_cpu(tmp_indexs.data(), gpu_indexs, (1<<c)*sizeof(int));
-      //int ret = memcmp(tmp_counters.data(), bucket_counters.data(), (1<<c) * sizeof(int));
-      //int ret2 = memcmp(tmp_starts.data(), starts.data(), (1<<c) * sizeof(int));
-      //int ret3 = memcmp(tmp_indexs.data(), indexs.data(), (1<<c) * sizeof(int));
-      //printf("%f, %f, %f, %f, %f %d, %d %d\n", f(t1, t0), f(t2, t1), f(t3, t2), f(t4, t3), f(t5, t4), ret, ret2, ret3);
-      //std::vector<T> tmp_values(length);
-      //for(int i = 0; i < length; i++){
-      //  T value;
-      //  copy_back(value, d_values2, i);
-      //  tmp_values[i] = value;
-      //}
-      
-      //std::vector<T> tmp_buckets(1 << c);
-      //for(int i = 0; i < (1<<c); i++){
-      //  T value;
-      //  copy_back(value, d_buckets, i * instances);
-      //  if(value != buckets[i]){
-      //    printf("compare bucket failed %d\n", i); 
-      //    break;
-      //  }
-      //}
-      //printf("compare bucket success\n");
-      //T tmp_result2;
-      //for(int i = 0; i < (1<<c); i++){
-      //  T value;
-      //  copy_back(value, d_buckets2, i);
-      //  //if(value != buckets[(1<<c)-1-i]){
-      //  //  printf("compare reverse failed. %d\n", i);
-      //  //  break;
-      //  //}
-      //  //if(value != prefix_sum_vec[i]){
-      //  //  printf("compare prefix_sum failed %d\n", i); 
-      //  //  break;
-      //  //}
-      //  tmp_result2 = tmp_result2 + value;
-      //}
-      //if(tmp_result != tmp_result2){
-      //  printf("compare tmp_result failed..\n");
-      //}
+      clock_t t3 = clock();
+      printf("%f %f %f, %f\n", f(t1, t0), f(t2, t1), f(t3, t2), f(t3, t0));
       return tmp_result;
     }
-
-    //return result;
 }
 template<typename T, typename FieldT, bool with_density, multi_exp_method Method>
 T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
@@ -766,44 +631,9 @@ T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
 #endif
     for (size_t i = 0; i < chunks; ++i)
     {
-        switch(config.multi_exp_prefetch_locality)
-        {
-            case 0:
-            {
-                partial[i] = multi_exp_inner_bellman_with_density_gpu<T, FieldT, with_density, false, 0>(
-                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead,
-                    d_values, d_density, d_bn_exponents);
-                break;
-            }
-            case 1:
-            {
-                partial[i] = multi_exp_inner_bellman_with_density_gpu<T, FieldT, with_density, false, 1>(
-                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead,
-                    d_values, d_density, d_bn_exponents);
-                break;
-            }
-            case 2:
-            {
-                partial[i] = multi_exp_inner_bellman_with_density_gpu<T, FieldT, with_density, false, 2>(
-                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead,
-                    d_values, d_density, d_bn_exponents);
-                break;
-            }
-            case 3:
-            {
-                partial[i] = multi_exp_inner_bellman_with_density_gpu<T, FieldT, with_density, false, 3>(
-                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead,
-                    d_values, d_density, d_bn_exponents);
-                break;
-            }
-            default:
-            {
-                partial[i] = multi_exp_inner_bellman_with_density_gpu<T, FieldT, with_density, false, 0>(
-                    vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead,
-                    d_values, d_density, d_bn_exponents);
-                break;
-            }
-        }
+      partial[i] = multi_exp_inner_bellman_with_density_gpu<T, FieldT, with_density>(
+          vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead,
+          d_values, d_density, d_bn_exponents);
     }
 
     T final = partial[chunks - 1];
