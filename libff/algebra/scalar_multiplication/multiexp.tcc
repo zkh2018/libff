@@ -633,6 +633,11 @@ T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
       gpu::copy_gpu_to_cpu(dst.Y.mont_repr.data, src.y.mont_repr_data + offset, 32);
       gpu::copy_gpu_to_cpu(dst.Z.mont_repr.data, src.z.mont_repr_data + offset, 32);
     };
+    auto copy_back_h = [&](T& dst, const gpu::alt_bn128_g1& src, const int offset){
+      memcpy(dst.X.mont_repr.data, src.x.mont_repr_data + offset, 32);
+      memcpy(dst.Y.mont_repr.data, src.y.mont_repr_data + offset, 32);
+      memcpy(dst.Z.mont_repr.data, src.z.mont_repr_data + offset, 32);
+    };
 
     const int n = 1 << c;
 #pragma omp parallel for
@@ -648,16 +653,7 @@ T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
           d_max_value, d_modulus, streams[i]);
     }
 
-    for(int i = 0; i < chunks; i++){
-      T tmp_result;
-      copy_back(tmp_result, d_buckets[i], 0);
-      for(int j = 1; j < 16; j++){
-        T value;
-        copy_back(value, d_buckets[i], j);
-        tmp_result = tmp_result + value;
-      }
-      partial[i] = tmp_result;
-    }
+    copy_back(partial[chunks-1], d_buckets[chunks-1], 0);
     T final = partial[chunks - 1];
     for (int i = chunks - 2; i >= 0; i--)
     {
@@ -665,6 +661,7 @@ T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
         {
             final = final.dbl();
         }
+        copy_back(partial[i], d_buckets[i], 0);
         final = final + partial[i];
     }
     return final;
