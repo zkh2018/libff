@@ -553,7 +553,7 @@ void multi_exp_inner_bellman_with_density_gpu(
     ){
     size_t length = bases_end - bases;
 
-    const int instances = 16;
+    const int instances = gpu::BUCKET_INSTANCES;
     auto f = [](clock_t t1, clock_t t0){
       return (double)(t1-t0)/CLOCKS_PER_SEC;
     };
@@ -567,7 +567,7 @@ void multi_exp_inner_bellman_with_density_gpu(
       gpu::copy_gpu_to_gpu(gpu_indexs, gpu_starts, (1<<c) * sizeof(int), stream);
       gpu::split_to_bucket(d_values, d_values2, d_density, d_bn_exponents.ptr, c, k, length, gpu_indexs, stream);
       d_buckets.clear(stream);
-      gpu::bucket_reduce_sum(d_values2, gpu_starts, gpu_indexs, gpu_ids, d_buckets, 1<<c, d_max_value.ptr, d_t_zero, d_modulus.ptr, const_inv, stream);
+      gpu::bucket_reduce_sum(d_values2, gpu_starts, gpu_indexs, gpu_ids, d_buckets, 1<<c, length, d_max_value.ptr, d_t_zero, d_modulus.ptr, const_inv, stream);
       gpu::reverse(d_buckets, d_buckets2, 1<<c, instances, stream);
       //clock_t t2 = clock();
       gpu::prefix_sum(d_buckets2, d_block_sums, d_block_sums2, 1<<c, d_max_value.ptr, d_modulus.ptr, const_inv, stream);
@@ -610,8 +610,8 @@ T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
     auto ranges = libsnark::get_cpu_ranges(0, total);
     std::vector<T> partial(chunks, T::zero());
 
-    const int length = total;
-    const int instances = 16;
+    //const int length = total;
+    //const int instances = 64;
     //static int* gpu_bucket_counters = nullptr, *gpu_starts = nullptr, *gpu_indexs;
     //static gpu::alt_bn128_g1 d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2;
     //gpu::gpu_malloc((void**)&gpu_bucket_counters, (1<<c) * sizeof(int));
