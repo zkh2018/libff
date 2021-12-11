@@ -784,6 +784,15 @@ void multi_exp_inner_bellman_with_density_g2_gpu(
       gpu::copy_gpu_to_cpu(dst.Y.c1.mont_repr.data, src.y.c1.mont_repr_data + offset, 32);
       gpu::copy_gpu_to_cpu(dst.Z.c1.mont_repr.data, src.z.c1.mont_repr_data + offset, 32);
     };
+    auto copy_back_h = [&](T& dst, const gpu::alt_bn128_g2& src, const int offset){
+      memcpy(dst.X.c0.mont_repr.data, src.x.c0.mont_repr_data + offset, 32);
+      memcpy(dst.Y.c0.mont_repr.data, src.y.c0.mont_repr_data + offset, 32);
+      memcpy(dst.Z.c0.mont_repr.data, src.z.c0.mont_repr_data + offset, 32);
+
+      memcpy(dst.X.c1.mont_repr.data, src.x.c1.mont_repr_data + offset, 32);
+      memcpy(dst.Y.c1.mont_repr.data, src.y.c1.mont_repr_data + offset, 32);
+      memcpy(dst.Z.c1.mont_repr.data, src.z.c1.mont_repr_data + offset, 32);
+    };
     auto copy_t = [&](T& src, const gpu::alt_bn128_g2& dst, const int offset){
       gpu::copy_cpu_to_gpu(dst.x.c0.mont_repr_data + offset, src.X.c0.mont_repr.data, 32);
       gpu::copy_cpu_to_gpu(dst.y.c0.mont_repr_data + offset, src.Y.c0.mont_repr.data, 32);
@@ -792,6 +801,72 @@ void multi_exp_inner_bellman_with_density_g2_gpu(
       gpu::copy_cpu_to_gpu(dst.y.c1.mont_repr_data + offset, src.Y.c1.mont_repr.data, 32);
       gpu::copy_cpu_to_gpu(dst.z.c1.mont_repr_data + offset, src.Z.c1.mont_repr.data, 32);
     };
+    auto copy_h_t = [&](T& src, const gpu::alt_bn128_g2& dst, const int offset){
+      memcpy(dst.x.c0.mont_repr_data + offset, src.X.c0.mont_repr.data, 32);
+      memcpy(dst.y.c0.mont_repr_data + offset, src.Y.c0.mont_repr.data, 32);
+      memcpy(dst.z.c0.mont_repr_data + offset, src.Z.c0.mont_repr.data, 32);
+      memcpy(dst.x.c1.mont_repr_data + offset, src.X.c1.mont_repr.data, 32);
+      memcpy(dst.y.c1.mont_repr_data + offset, src.Y.c1.mont_repr.data, 32);
+      memcpy(dst.z.c1.mont_repr_data + offset, src.Z.c1.mont_repr.data, 32);
+    };
+    auto copy_h = [&](gpu::alt_bn128_g2& src, const int src_offset, gpu::alt_bn128_g2& dst, const int dst_offset){
+      memcpy(dst.x.c0.mont_repr_data + dst_offset, src.x.c0.mont_repr_data + src_offset, 32);
+      memcpy(dst.y.c0.mont_repr_data + dst_offset, src.y.c0.mont_repr_data + src_offset, 32);
+      memcpy(dst.z.c0.mont_repr_data + dst_offset, src.z.c0.mont_repr_data + src_offset, 32);
+
+      memcpy(dst.x.c1.mont_repr_data + dst_offset, src.x.c1.mont_repr_data + src_offset, 32);
+      memcpy(dst.y.c1.mont_repr_data + dst_offset, src.y.c1.mont_repr_data + src_offset, 32);
+      memcpy(dst.z.c1.mont_repr_data + dst_offset, src.z.c1.mont_repr_data + src_offset, 32);
+    };
+    auto swap_h = [&](gpu::alt_bn128_g2& a, const int i, const int j, const int offset){
+      gpu::alt_bn128_g2 tmp;
+      tmp.init_host(1);
+      copy_h(a, i, tmp, 0);
+      copy_h(a, j, a, i);
+      copy_h(tmp, 0, a, j);
+      tmp.release_host();
+    };
+
+    const int bucket_num = 1<<c;
+    std::vector<int> bucket_counters(bucket_num, 0), starts(bucket_num), indexs(bucket_num); 
+    std::vector<T> values2(length);
+    if(false){
+      for(int i = 0; i < length; i++){
+        if (with_density)
+        {
+          if (!density[i])
+          {
+            continue;
+          }
+        }
+
+        size_t id = get_id(c, k*c, &exponents[i].data[0]);
+        if (id != 0)
+        {
+          bucket_counters[id] += 1;
+        }
+      }
+      int offset = 0;
+      for(int i = 0; i < bucket_num; i++){
+        starts[i] = offset;
+        offset += bucket_counters[i];
+        indexs[i] = offset;
+      }
+      for(int i = 0; i < length; i++){
+        //if (with_density)
+        //{
+        //  if (!density[i])
+        //  {
+        //    continue;
+        //  }
+        //}
+        //size_t id = get_id(c, k*c, &exponents[i].data[0]);
+        //if (id != 0)
+        //{
+        //  values2[starts[id]++] = bases[i];
+        //}
+      }
+    }
     if(true){
       uint64_t const_inv = bases[0].X.c0.inv;
 
@@ -807,69 +882,282 @@ void multi_exp_inner_bellman_with_density_g2_gpu(
       gpu::sync_device();
       d_values2.clear(stream);
       gpu::split_to_bucket_g2(d_values, d_values2, d_density, d_bn_exponents.ptr, c, k, length, gpu_starts, gpu_indexs, stream);
+      if(false){
+        //gpu::alt_bn128_g2 h_values;
+        //h_values.init_host(length);
+        //d_values2.copy_to_cpu(h_values);
+        //for(int i = 0; i < length; i++){
+        //  int cmp_ret = memcmp(h_values.x.c0.mont_repr_data + i, values2[i].X.c0.mont_repr.data, 32);
+        //  if(cmp_ret != 0){
+        //    printf("compare split_to_bucket failed\n");
+        //    exit(0);
+        //  }
+        //}
+        //h_values.release_host();
+      }
+
+
       gpu::sync_device();
 
-      //std::vector<int> h_starts(100), h_ends(100);
-      //gpu::copy_gpu_to_cpu(h_starts.data(), gpu_starts, 100*sizeof(int));
-      //gpu::copy_gpu_to_cpu(h_ends.data(), gpu_indexs, 100*sizeof(int));
+      
+      if(false){
+        std::vector<int> h_starts(bucket_num), h_ends(bucket_num);
+        gpu::copy_gpu_to_cpu(h_starts.data(), gpu_starts, bucket_num*sizeof(int));
+        gpu::copy_gpu_to_cpu(h_ends.data(), gpu_indexs, bucket_num*sizeof(int));
+        gpu::alt_bn128_g2 h_values2, tmp_buckets;
+        h_values2.init_host(length);
+        tmp_buckets.init_host(bucket_num * instances);
+        d_values2.copy_to_cpu(h_values2);
+#pragma omp parallel for
+        for(int i = 0; i < bucket_num; i++){
+          T sum = T::zero();
+          for(int j = h_starts[i]; j < h_ends[i]; j++){
+            T value;
+            copy_back_h(value, h_values2, j);
+            sum = sum + value;
+          }
+          copy_h_t(sum, tmp_buckets, i * instances);
+        }
+        d_buckets.copy_from_cpu(tmp_buckets);
+        tmp_buckets.release_host();
+        h_values2.release_host();
+      }
 
       d_buckets.clear(stream);
+      gpu::gpu_set_zero(gpu_instance_bucket_ids, (1<<c)*sizeof(int), stream);
+      gpu::gpu_set_zero(gpu_ids, (1<<c)*sizeof(int), stream);
       gpu::sync_device();
-      gpu::bucket_reduce_sum_g2(d_values2, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids, d_buckets, 1<<c, length, d_max_value.ptr, d_t_zero, d_modulus.ptr, const_inv, d_non_residue, stream);
+
+      //gpu::alt_bn128_g2 save_values, save_buckets, save_buckets2;
+      //save_values.init(length);
+      //save_buckets.init_host(bucket_num * instances);
+      //save_buckets2.init_host(bucket_num * instances);
+      //save_values.copy_from_gpu(d_values2);
+
+      for(int i = 0; i < 1; i++){
+        //printf("%d\n", i);
+        //d_values2.copy_from_gpu(save_values);
+        //d_buckets.clear(stream);
+        gpu::bucket_reduce_sum_g2(d_values2, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids, d_buckets, 1<<c, length, d_max_value.ptr, d_t_zero, d_modulus.ptr, const_inv, d_non_residue, stream);
+
+        //if(i == 0){
+        //  d_buckets.copy_to_cpu(save_buckets);
+        //}else{
+        //  d_buckets.copy_to_cpu(save_buckets2);
+        //  for(int j = 0; j < bucket_num; j++){
+        //    int cmp_ret = memcmp(save_buckets.x.c0.mont_repr_data + j*instances, save_buckets2.x.c0.mont_repr_data + j*instances, 32); 
+        //    if(cmp_ret != 0){
+        //      printf("compare bucket_reduce failed %d %d\n", i, j);
+        //      exit(0);
+        //    }
+        //  }
+        //}
+      }
+
       gpu::sync_device();
-      //for(int i = 0; i < 100; i++){
-      //  int n = h_ends[i] - h_starts[i];
-      //  if(n > 0){
-      //    T value;
-      //    copy_back(value, d_buckets, i * instances);
-      //    FILE *fp = fopen("bucket_reduce.txt", "a+");
-      //    fprintf(fp, "%d:", n);
-      //    for(int i = 0; i < 4; i++){
-      //      fprintf(fp, "%lu ", value.X.c0.mont_repr.data[i]);
-      //    }
-      //    fprintf(fp, "\n");
-      //    fclose(fp);
-      //    break;
-      //  }
-      //}
+      if(false){
+        static int run_count = 0;
+        static gpu::alt_bn128_g2 h_buckets[16], h_buckets2[16];
+        if(run_count < 16){
+          h_buckets[run_count].init_host(bucket_num * instances);
+          h_buckets2[run_count].init_host(bucket_num * instances);
+          d_buckets.copy_to_cpu(h_buckets[run_count]);
+        }else{
+          int cur_count = run_count % 16;
+          d_buckets.copy_to_cpu(h_buckets2[cur_count]);
+          for(int i = 0; i<(1<<c); i++){
+            int cmp_ret = memcmp(h_buckets[cur_count].x.c0.mont_repr_data + i*instances, h_buckets2[cur_count].x.c0.mont_repr_data + i*instances, 32); 
+            if(cmp_ret != 0){
+              printf("compare bucket_reduce failed\n");
+              exit(0);
+            }
+          }
+        }
+        run_count += 1;
+      }
+
+      d_buckets2.clear(stream);
+
+      if(false){
+        gpu::alt_bn128_g2 rev_buckets, out_buckets;
+        rev_buckets.init_host((1<<c) * instances);
+        out_buckets.init_host(1<<c);
+        d_buckets.copy_to_cpu(rev_buckets);
+        const int bucket_num = 1<<c;
+        for(int i = 0; i < bucket_num; i++){
+          //swap_h(rev_buckets, i, bucket_num - i - 1, instances);
+          copy_h(rev_buckets, i * instances, out_buckets, bucket_num-i-1);
+        }
+        T value;
+        copy_back_h(value, out_buckets, 0);
+        T sum = value;
+        T result = sum;
+        for(int i = 1; i < bucket_num; i++){
+          copy_back_h(value, out_buckets, i);
+          sum = sum + value;
+          //out_buckets[i] = sum;
+          if(i < bucket_num - 1)
+          result = result + sum;
+        }
+        //d_buckets2.copy_from_cpu(out_buckets);
+        rev_buckets.release_host();
+        out_buckets.release_host();
+        copy_t(result, d_buckets, 0);
+        return;
+      }
 
       gpu::reverse_g2(d_buckets, d_buckets2, 1<<c, instances, stream);
+      if(false){
+        gpu::alt_bn128_g2 rev_buckets, out_buckets;
+        out_buckets.init_host(1<<c);
+        d_buckets2.copy_to_cpu(out_buckets);
+        const int bucket_num = 1<<c;
+        T value;
+        copy_back_h(value, out_buckets, 0);
+        T sum = value;
+        T result = sum;
+        for(int i = 1; i < bucket_num; i++){
+          copy_back_h(value, out_buckets, i);
+          sum = sum + value;
+          copy_h_t(sum, out_buckets, i);
+          if(i < bucket_num - 1)
+          result = result + sum;
+        }
+        //out_buckets.release_host();
+        //copy_t(result, d_buckets, 0);
+        //return;
+        d_buckets2.copy_from_cpu(out_buckets);
+      }
+      if(false){
+        static int run_count = 0;
+        static gpu::alt_bn128_g2 h_buckets[16], h_buckets2[16];
+        if(run_count < 16){
+          h_buckets[run_count].init_host(1<<c);
+          h_buckets2[run_count].init_host(1<<c);
+          d_buckets2.copy_to_cpu(h_buckets[run_count]);
+        }else{
+          int cur_count = run_count % 16;
+          d_buckets2.copy_to_cpu(h_buckets2[cur_count]);
+          for(int i = 0; i<(1<<c); i++){
+            int cmp_ret = memcmp(h_buckets[cur_count].x.c0.mont_repr_data + i, h_buckets2[cur_count].x.c0.mont_repr_data + i, 32); 
+            if(cmp_ret != 0){
+              printf("compare reverse failed %d, %d\n", i, (1<<c));
+              exit(0);
+            }
+          }
+        }
+        run_count += 1;
+      }
       gpu::sync_device();
       //clock_t t2 = clock();
       d_block_sums.clear(stream);
       d_block_sums2.clear(stream);
-      gpu::prefix_sum_g2(d_buckets2, d_block_sums, d_block_sums2, 1<<c, d_max_value.ptr, d_modulus.ptr, const_inv, d_non_residue, stream);
-      gpu::sync_device();
-      //T value;
-      //copy_back(value, d_buckets2, 10);
-      //FILE *fp = fopen("prefix_sum.txt", "a+");
-      //for(int i = 0; i < 4; i++){
-      //  fprintf(fp, "%lu ", value.X.c0.mont_repr.data[i]);
-      //}
-      //fprintf(fp, "\n");
-      //fclose(fp);
-      //clock_t t3 = clock();
-      //T result;
-      //for(int i = 0; i < (1<<c)-1; i++){
-      //  T value;
-      //  copy_back(value, d_buckets2, i);
-      //  result = result + value;
-      //}
-      //copy_t(result, d_buckets, 0);
-      //return;
 
+      //gpu::alt_bn128_g2 prefix_buckets;
+      //prefix_buckets.init(bucket_num);
+      //prefix_buckets.copy_from_gpu(d_buckets2);
+      for(int i = 0; i < 1; i++){
+        //printf("%d\n", i);
+        //d_buckets2.copy_from_gpu(prefix_buckets);
+        gpu::prefix_sum_g2(d_buckets2, d_block_sums, d_block_sums2, 1<<c, d_max_value.ptr, d_modulus.ptr, const_inv, d_non_residue, stream);
+        if(i == 0){
+          //d_buckets2.copy_to_cpu(save_buckets);
+        }else{
+          //d_buckets2.copy_to_cpu(save_buckets2);
+          //for(int j = 0; j < bucket_num; j++){
+          //  int cmp_ret = memcmp(save_buckets.x.c0.mont_repr_data + j, save_buckets2.x.c0.mont_repr_data + j, 32); 
+          //  if(cmp_ret != 0){
+          //    printf("compare prefix_sum failed %d %d\n", i, j);
+          //    exit(0);
+          //  }
+          //}
+        }
+      }
+      //prefix_buckets.release();
+      gpu::sync_device();
+
+      if(false){
+        static int run_count = 0;
+        static gpu::alt_bn128_g2 h_buckets[16], h_buckets2[16];
+        if(run_count < 16){
+          h_buckets[run_count].init_host(1<<c);
+          h_buckets2[run_count].init_host(1<<c);
+          d_buckets2.copy_to_cpu(h_buckets[run_count]);
+        }else{
+          int cur_count = run_count % 16;
+          d_buckets2.copy_to_cpu(h_buckets2[cur_count]);
+          for(int i = 0; i<(1<<c); i++){
+            int cmp_ret = memcmp(h_buckets[cur_count].x.c0.mont_repr_data + i, h_buckets2[cur_count].x.c0.mont_repr_data + i, 32); 
+            if(cmp_ret != 0){
+              printf("compare prefix_sum failed %d\n", run_count);
+              //exit(0);
+            }
+          }
+        }
+        run_count += 1;
+      }
+
+      if(false){
+        gpu::alt_bn128_g2 tmp_buckets;
+        tmp_buckets.init_host(1<<c);
+        d_buckets2.copy_to_cpu(tmp_buckets);
+        T result;
+        for(int i = 0; i < (1<<c)-1; i++){
+          T value;
+          copy_back_h(value, tmp_buckets, i);
+          result = result + value;
+        }
+        copy_t(result, d_buckets, 0);
+        tmp_buckets.release_host();
+        return;
+      }
+
+      d_buckets.clear(stream);
       gpu::alt_bn128_g2_reduce_sum2(d_buckets2, d_buckets, (1<<c), d_max_value.ptr, d_modulus.ptr, const_inv, d_non_residue, stream);
-      //gpu::sync_device();
-      ///copy_back(value, d_buckets, 0);
-      ///FILE *fp2 = fopen("reduce_sum.txt", "a+");
-      ///for(int i = 0; i < 4; i++){
-      ///  fprintf(fp2, "%lu ", value.X.c0.mont_repr.data[i]);
-      ///}
-      ///fprintf(fp2, "\n");
-      ///fclose(fp2);
-      //clock_t t4 = clock();
-      //printf("%f %f %f %f\n", f(t1, t0), f(t2, t1), f(t3, t2), f(t4, t3));
-      //return tmp_result;
+      if(false){
+        static int run_count = 0;
+        static std::vector<T> h_buckets(16), h_buckets2(16);
+        if(run_count < 16){
+          copy_back(h_buckets[run_count], d_buckets, 0);
+        }else{
+          int cur_count = run_count % 16;
+          copy_back(h_buckets2[run_count], d_buckets, 0);
+          int cmp_ret = memcmp(h_buckets[cur_count].X.c0.mont_repr.data, h_buckets2[cur_count].X.c0.mont_repr.data, 32); 
+          if(cmp_ret != 0){
+            printf("compare reduce_sum failed %d\n", run_count);
+            //exit(0);
+          }
+        }
+        run_count += 1;
+      }
+      //tmp_buckets.release_host();
+    }else{
+      std::vector<T> buckets(1 << c);
+      for (size_t i = 0; i < length; i++)
+      {
+        if (with_density)
+        {
+          if (!density[i])
+          {
+            continue;
+          }
+        }
+
+        size_t id = get_id(c, k*c, &exponents[i].data[0]);
+        if (id != 0)
+        {
+          buckets[id] = buckets[id] + bases[i];
+        }
+      }
+
+      T result;
+      T running_sum;
+      for (size_t i = (1u << c) - 1; i > 0; i--)
+      {
+        running_sum = running_sum + buckets[i];
+        result = result + running_sum;
+      }
+      copy_t(result, d_buckets, 0);
     }
 }
 template<typename T, typename FieldT, bool with_density, multi_exp_method Method>
@@ -931,7 +1219,7 @@ T multi_exp_with_density_g2_gpu(typename std::vector<T>::const_iterator vec_star
       memcpy(dst.Z.c1.mont_repr.data, src.z.c1.mont_repr_data + offset, 32);
     };
 
-    const int n = 1 << c;
+    //const int n = 1 << c;
 //#pragma omp parallel for
     //FILE *fp = fopen("bt_partial.txt", "a+");
     for (size_t i = 0; i < chunks; ++i)
@@ -1092,13 +1380,15 @@ T multi_exp_gpu(typename std::vector<T>::const_iterator vec_start,
             const libsnark::Config& config)
 {
     const size_t total = vec_end - vec_start;
-    std::vector<bigint<FieldT::num_limbs>>& bn_exponents = scratch_exponents;
+    //std::vector<bigint<FieldT::num_limbs>>& bn_exponents = scratch_exponents;
+    std::vector<bigint<FieldT::num_limbs>> bn_exponents(scratch_exponents.size());
+
     if (bn_exponents.size() < total)
     {
         bn_exponents.resize(total);
     }
 
-    enter_block("Convert to bigint");
+    //enter_block("Convert to bigint");
     auto ranges = libsnark::get_cpu_ranges(0, total);
 #ifdef MULTICORE
     #pragma omp parallel for
@@ -1110,29 +1400,32 @@ T multi_exp_gpu(typename std::vector<T>::const_iterator vec_start,
             bn_exponents[i] = scalar_start[i].as_bigint();
         }
     }
-    leave_block("Convert to bigint");
-    printf("total=%d, ranges=%d\n", total, ranges.size());
+    //leave_block("Convert to bigint");
+    //printf("total=%d, ranges=%d\n", total, ranges.size());
 
     // Dummy density vector
     std::vector<bool> density;
-    enter_block("cpu multi_exp_with_density");
+    //enter_block("cpu multi_exp_with_density");
     //auto cpu_result = multi_exp_with_density<T, FieldT, false, Method>(vec_start, vec_end, bn_exponents, density, config);
-    leave_block("cpu multi_exp_with_density");
+    //leave_block("cpu multi_exp_with_density");
 
     /****call gpu*****/
-    enter_block("gpu multi_exp_with_density");
-    enter_block("gpu init");
+    //enter_block("gpu multi_exp_with_density");
+    //enter_block("gpu init");
     const int local_instances = BlockDepth * 64;
     unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
     unsigned int chunks = config.num_threads;
     chunks = 1;//(254 + c - 1) / c;
     const int instances = gpu::BUCKET_INSTANCES;
     const int length = total;
+    const int values_size = total;
 
     static gpu::alt_bn128_g1 h_values, d_values, d_t_zero;
     static std::vector<gpu::alt_bn128_g1> d_values2(chunks), d_buckets(chunks), d_buckets2(chunks), d_block_sums(chunks), d_block_sums2(chunks);
-    const int values_size = total;
-    {
+    static int* gpu_bucket_counters = nullptr, *gpu_starts = nullptr, *gpu_indexs, *gpu_ids, *gpu_instance_bucket_ids;
+    static char *d_density;
+    static gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
+    if(gpu_bucket_counters == nullptr){
       h_values.init_host(values_size);
       d_values.init(values_size);
       d_t_zero.init(1);
@@ -1144,10 +1437,7 @@ T multi_exp_gpu(typename std::vector<T>::const_iterator vec_start,
         d_block_sums2[i].init((1<<c) / 64/64);
       }
     }
-    static int* gpu_bucket_counters = nullptr, *gpu_starts = nullptr, *gpu_indexs, *gpu_ids, *gpu_instance_bucket_ids;
-    static char *d_density;
-    static gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
-    {
+    if(gpu_bucket_counters == nullptr){
       gpu::gpu_malloc((void**)&gpu_bucket_counters, (1<<c) * sizeof(int) * chunks);
       gpu::gpu_malloc((void**)&gpu_starts, ((1<<c)+1) * sizeof(int) * chunks * 2);
       gpu::gpu_malloc((void**)&gpu_indexs, (1<<c) * sizeof(int) * chunks * 2);
@@ -1188,12 +1478,13 @@ T multi_exp_gpu(typename std::vector<T>::const_iterator vec_start,
     d_values.copy_from_cpu(h_values);
     copy_t(T::zero(), d_t_zero, 0);
 
-    gpu::init_error_report();
-    leave_block("gpu init");
-    enter_block("call gpu");
-    auto gpu_result = multi_exp_with_density_gpu<T, FieldT, false, Method>(vec_start, vec_end, bn_exponents, density, config, d_values, d_density, d_bn_exponents, dmax_value, d_modulus, d_t_zero, d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2, gpu_bucket_counters, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids);
-    leave_block("call gpu");
-    leave_block("gpu multi_exp_with_density");
+    //gpu::init_error_report();
+    //leave_block("gpu init");
+    //enter_block("call gpu");
+    T gpu_result;
+    gpu_result = multi_exp_with_density_gpu<T, FieldT, false, Method>(vec_start, vec_end, bn_exponents, density, config, d_values, d_density, d_bn_exponents, dmax_value, d_modulus, d_t_zero, d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2, gpu_bucket_counters, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids);
+    ///leave_block("call gpu");
+    ///leave_block("gpu multi_exp_with_density");
     
     if(false){
       d_values.release();
@@ -1311,7 +1602,7 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
                                 const libsnark::Config& config)
 {
     assert(std::distance(vec_start, vec_end) == std::distance(scalar_start, scalar_end));
-    enter_block("Process scalar vector");
+    //enter_block("Process scalar vector");
 
     const FieldT zero = FieldT::zero();
     const FieldT one = FieldT::one();
@@ -1322,24 +1613,25 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
 
     const size_t scalar_length = std::distance(scalar_start, scalar_end);
 
-    libff::enter_block("allocate density memory");
+    //libff::enter_block("allocate density memory");
     std::vector<bool> density(scalar_length);
-    libff::leave_block("allocate density memory");
+    //libff::leave_block("allocate density memory");
 
-    std::vector<bigint<FieldT::num_limbs>>& bn_exponents = scratch_exponents;
+    //std::vector<bigint<FieldT::num_limbs>>& bn_exponents = scratch_exponents;
+    std::vector<bigint<FieldT::num_limbs>> bn_exponents(scratch_exponents.size());
     if (bn_exponents.size() < scalar_length)
     {
         bn_exponents.resize(scalar_length);
     }
 
     auto ranges = libsnark::get_cpu_ranges(0, scalar_length);
-    std::vector<T> partial(ranges.size(), T::zero());
-    std::vector<unsigned int> counters(ranges.size(), 0);
+    //std::vector<T> partial(ranges.size(), T::zero());
+    //std::vector<unsigned int> counters(ranges.size(), 0);
     int max_depth = 0;
     for(int i = 0; i < ranges.size(); i++){
       max_depth = std::max(max_depth, (int)(ranges[i].second - ranges[i].first));
     }
-    enter_block("cpu reduce sum");
+    //enter_block("cpu reduce sum");
 
 #ifdef MULTICORE
     #pragma omp parallel for
@@ -1358,7 +1650,7 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
             else if (scalar_start[i] == one)
             {
 #ifdef USE_MIXED_ADDITION
-                result = result.mixed_add(vec_start[i]);
+                //result = result.mixed_add(vec_start[i]);
 #else
                 //result = result + vec_start[i];
 #endif
@@ -1375,26 +1667,16 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
                 //++num_other;
             }
         }
-        //partial[j] = result;
-        //counters[j] = count;
     }
 
-    //T acc = T::zero();
-    //unsigned int totalCount = 0;
-    //for (unsigned int i = 0; i < ranges.size(); i++)
-    //{
-    //    acc = acc + partial[i];
-    //    totalCount += counters[i];
-    //}
-    leave_block("cpu reduce sum");
+    //leave_block("cpu reduce sum");
 
 
-    enter_block("cpu multi_exp_with_density");
-    //auto cpu_result = acc + multi_exp_with_density<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config);
-    leave_block("cpu multi_exp_with_density");
+    //enter_block("cpu multi_exp_with_density");
+    //leave_block("cpu multi_exp_with_density");
     if(true){
-      libff::enter_block("call gpu");
-      libff::enter_block("gpu init");
+      //libff::enter_block("call gpu");
+      //libff::enter_block("gpu init");
       const int local_instances = BlockDepth * 64;
       const int blocks = (max_depth + local_instances - 1) / local_instances;
       unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
@@ -1409,7 +1691,14 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
       static std::vector<gpu::alt_bn128_g1> d_values2(chunks), d_buckets(chunks), d_buckets2(chunks), d_block_sums(chunks), d_block_sums2(chunks);
       static gpu::Fp_model h_scalars, d_scalars, d_field_zero, d_field_one;
       const int ranges_size = ranges.size();
-      {
+
+      static uint32_t *d_counters, *d_counters2;
+      static size_t* d_index_it;
+      static uint32_t *d_firsts, *d_seconds;
+      static int* gpu_bucket_counters = nullptr, *gpu_starts = nullptr, *gpu_indexs, *gpu_ids, *gpu_instance_bucket_ids;
+      static char *d_density, *flags;
+      static gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
+      if(gpu_bucket_counters == nullptr){
         h_values.init_host(values_size);
         d_values.init(values_size);
         h_scalars.init_host(scalar_size);
@@ -1428,14 +1717,7 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
           d_block_sums2[i].init((1<<c) / 64/64);
         }
       }
-
-      static uint32_t *d_counters, *d_counters2;
-      static size_t* d_index_it;
-      static uint32_t *d_firsts, *d_seconds;
-      static int* gpu_bucket_counters = nullptr, *gpu_starts = nullptr, *gpu_indexs, *gpu_ids, *gpu_instance_bucket_ids;
-      static char *d_density, *flags;
-      static gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
-      {
+      if(gpu_bucket_counters == nullptr){
         gpu::gpu_malloc((void**)&d_counters, ranges_size  * blocks * sizeof(uint32_t));
         gpu::gpu_malloc((void**)&d_counters2, ranges_size  * sizeof(uint32_t));
         gpu::gpu_malloc((void**)&d_firsts, ranges_size  * sizeof(uint32_t));
@@ -1444,7 +1726,7 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
         gpu::gpu_malloc((void**)&gpu_starts, ((1<<c)+1) * sizeof(int) * chunks * 2);
         gpu::gpu_malloc((void**)&gpu_indexs, (1<<c) * sizeof(int) * chunks * 2);
         gpu::gpu_malloc((void**)&gpu_ids, ((1<<c)+1) * sizeof(int) * chunks);
-        gpu::gpu_malloc((void**)&gpu_instance_bucket_ids, length * sizeof(int) * chunks);
+        gpu::gpu_malloc((void**)&gpu_instance_bucket_ids, (length+1) * sizeof(int) * chunks);
         gpu::gpu_malloc((void**)&flags, scalar_size * sizeof(char));
         max_value.resize_host(1);
         dmax_value.resize(1);
@@ -1493,7 +1775,7 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
       auto copy_field_h = [](const FieldT& src, gpu::Fp_model& dst, const int offset){
         memcpy(dst.mont_repr_data + offset, src.mont_repr.data, 32);
       };
-      libff::enter_block("gpu copy");
+      //libff::enter_block("gpu copy");
       gpu::copy_cpu_to_gpu(d_modulus.ptr->_limbs, vec_start[0].X.get_modulus().data, 32);
       gpu::copy_cpu_to_gpu(d_field_modulus.ptr->_limbs, scalar_start[0].get_modulus().data, 32);
       uint64_t const_inv = vec_start[0].X.inv;
@@ -1512,13 +1794,13 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
       copy_t(T::one(), d_t_one, 0);
       copy_field(zero, d_field_zero, 0);
       copy_field(one, d_field_one, 0);
-      libff::leave_block("gpu copy");
+      //libff::leave_block("gpu copy");
 
-      gpu::init_error_report();
+      //gpu::init_error_report();
       //gpu::warm_up();
-      libff::leave_block("gpu init");
+      //libff::leave_block("gpu init");
 
-      libff::enter_block("gpu reduce sum");
+      //libff::enter_block("gpu reduce sum");
       gpu::alt_bn128_g1_reduce_sum_one_range(
           d_values, 
           d_scalars, 
@@ -1539,14 +1821,14 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
 
       T gpu_acc;
       copy_back(gpu_acc, d_partial, 0);
-      libff::leave_block("gpu reduce sum");
+      //libff::leave_block("gpu reduce sum");
 
-      libff::enter_block("gpu multi exp with density");
+      //libff::enter_block("gpu multi exp with density");
       //auto tmp = gpu_acc + multi_exp_with_density<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config);
       gpu::copy_cpu_to_gpu(d_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size());
       auto tmp = gpu_acc + libff::multi_exp_with_density_gpu<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config, d_values, d_density, d_bn_exponents, dmax_value, d_modulus, d_t_zero, d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2, gpu_bucket_counters, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids);
-      libff::leave_block("gpu multi exp with density");
-      libff::leave_block("call gpu");
+      //libff::leave_block("gpu multi exp with density");
+      //libff::leave_block("call gpu");
 
       if(false){
         d_values.release();
@@ -1581,7 +1863,7 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
       }
       return tmp;
     }
-    leave_block("Process scalar vector");
+    //leave_block("Process scalar vector");
     //return cpu_result;
 }
 
