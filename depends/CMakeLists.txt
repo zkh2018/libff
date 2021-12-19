@@ -9,3 +9,7 @@ if(${CURVE} STREQUAL "BN128")
     ate-pairing/src/zm2.cpp
   )
 endif()
+
+include_directories(CGBN)
+include_directories(CGBN/include)
+include_directories(CGBN/samples)

@@ -1677,7 +1677,7 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
       d_values.resize(values_size);
       h_scalars.resize_host(scalar_size);
       d_scalars.resize(scalar_size);
-      d_partial.resize(ranges_size * max_depth / 2);
+      d_partial.resize(ranges_size * gpu::REDUCE_BLOCKS_PER_RANGE * gpu::INSTANCES_PER_BLOCK);
       d_bn_exponents.resize(bn_exponents.size());
       h_bn_exponents.resize_host(bn_exponents.size());
       for(int i = 0; i < chunks; i++){
