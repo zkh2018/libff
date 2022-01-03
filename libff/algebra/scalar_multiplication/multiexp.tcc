@@ -602,62 +602,39 @@ void multi_exp_inner_bellman_with_density_gpu(
       //clock_t t0 = clock();
       //printf("1\n"); 
       gpu::gpu_set_zero(gpu_bucket_counters, (1<<c)*sizeof(int), stream);
-      gpu::sync_device();
+      //gpu::sync_device();
       gpu::bucket_counter(with_density, d_density, d_bn_exponents.ptr, c, k, length, (1<<c), gpu_bucket_counters, stream);
-      gpu::sync_device();
-      //std::vector<int> tmp_counter(bucket_num);
-      //gpu::copy_gpu_to_cpu(tmp_counter.data(), gpu_bucket_counters, bucket_num * sizeof(int));
-      //int cmp_ret = memcmp(tmp_counter.data(), bucket_counter.data(), bucket_num * sizeof(int));
-      //printf("1 compare result = %d\n", cmp_ret);
+      //gpu::sync_device();
 
       gpu::gpu_set_zero(gpu_starts, (1<<c)*sizeof(int), stream);
       gpu::prefix_sum(gpu_bucket_counters, gpu_starts, 1<<c, stream);
-      gpu::sync_device();
-      //std::vector<int> tmp_starts(bucket_num);
-      //gpu::copy_gpu_to_cpu(tmp_starts.data(), gpu_starts, bucket_num * sizeof(int));
-      //cmp_ret = memcmp(tmp_starts.data(), starts.data(), bucket_num * sizeof(int));
-      //printf("2 compare result = %d\n", cmp_ret);
+      //gpu::sync_device();
       //printf("3\n");
       gpu::copy_gpu_to_gpu(gpu_indexs, gpu_starts, (1<<c) * sizeof(int), stream);
-      gpu::sync_device();
+      //gpu::sync_device();
       //printf("4\n");
       //
-      d_values2.clear(stream);
+      //d_values2.clear(stream);
       gpu::split_to_bucket(d_values, d_values2, with_density, d_density, d_bn_exponents.ptr, c, k, length, gpu_starts, gpu_indexs, stream);
       gpu::sync_device();
-      //int bucket_num = 1 << c;
-      //std::vector<int> tmp_ends(bucket_num), tmp_starts(bucket_num);
-      //gpu::copy_gpu_to_cpu(tmp_ends.data(), gpu_indexs, bucket_num * sizeof(int));
-      //gpu::copy_gpu_to_cpu(tmp_starts.data(), gpu_starts, bucket_num * sizeof(int));
-      //T tmp_result;
-      //for(int i = 0; i < bucket_num; i++){
-      //  for(int j = tmp_starts[i]; j < tmp_ends[i]; j++){
-      //    T value;
-      //    copy_back(value, d_values, j);
-      //    tmp_result  = tmp_result + value; 
-      //  }
-      //}
-      //copy_t(tmp_result, d_buckets, 0);
-      //return ;
-      //cmp_ret = memcmp(tmp_ends.data(), ends.data(), bucket_num * sizeof(int));
       //printf("3 compare result = %d\n", cmp_ret);
 
-      d_buckets.clear(stream);
-      gpu::sync_device();
+      //d_buckets.clear(stream);
+      //gpu::sync_device();
       gpu::bucket_reduce_sum(d_values2, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids, d_buckets, 1<<c, length, d_max_value.ptr, d_t_zero, d_modulus.ptr, const_inv, stream);
-      gpu::sync_device();
+      //gpu::sync_device();
       gpu::reverse(d_buckets, d_buckets2, 1<<c, instances, stream);
-      gpu::sync_device();
+      //gpu::sync_device();
       //printf("7\n");
       //clock_t t2 = clock();
-      d_block_sums.clear(stream);
-      d_block_sums2.clear(stream);
+      //d_block_sums.clear(stream);
+      //d_block_sums2.clear(stream);
       gpu::prefix_sum(d_buckets2, d_block_sums, d_block_sums2, 1<<c, d_max_value.ptr, d_modulus.ptr, const_inv, stream);
-      gpu::sync_device();
+      //gpu::sync_device();
       //printf("8\n");
       //clock_t t3 = clock();
       gpu::alt_bn128_g1_reduce_sum2(d_buckets2, d_buckets, (1<<c), d_max_value.ptr, d_modulus.ptr, const_inv, stream);
-      gpu::sync_device();
+      //gpu::sync_device();
       //printf("9\n");
       //clock_t t4 = clock();
       //printf("%f %f %f %f\n", f(t1, t0), f(t2, t1), f(t3, t2), f(t4, t3));
@@ -1677,7 +1654,8 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
       d_values.resize(values_size);
       h_scalars.resize_host(scalar_size);
       d_scalars.resize(scalar_size);
-      d_partial.resize(ranges_size * gpu::REDUCE_BLOCKS_PER_RANGE * gpu::INSTANCES_PER_BLOCK);
+      //d_partial.resize(ranges_size * gpu::REDUCE_BLOCKS_PER_RANGE * gpu::INSTANCES_PER_BLOCK);
+      d_partial.resize(values_size);
       d_bn_exponents.resize(bn_exponents.size());
       h_bn_exponents.resize_host(bn_exponents.size());
       for(int i = 0; i < chunks; i++){
@@ -1729,7 +1707,7 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
       }
       d_scalars.copy_from_cpu(h_scalars);
 
-      gpu::alt_bn128_g1_reduce_sum_one_range(
+      gpu::alt_bn128_g1_reduce_sum_one_range5(
           d_values, 
           d_scalars, 
           (size_t*)d_index_it.ptr, 
