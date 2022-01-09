@@ -615,8 +615,8 @@ void multi_exp_inner_bellman_with_density_gpu(
       //printf("4\n");
       //
       //d_values2.clear(stream);
-      gpu::split_to_bucket(d_values, d_values2, with_density, d_density, d_bn_exponents.ptr, c, k, length, gpu_starts, gpu_indexs, stream);
-      gpu::sync_device();
+      gpu::split_to_bucket(d_values, d_values2, with_density, d_density, d_bn_exponents.ptr, c, k, length, gpu_starts, gpu_indexs, gpu_instance_bucket_ids, stream);
+      //gpu::sync_device();
       //printf("3 compare result = %d\n", cmp_ret);
 
       //d_buckets.clear(stream);
@@ -662,7 +662,8 @@ T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
             int* gpu_starts, 
             int *gpu_indexs,
             int *gpu_ids,
-            int* gpu_instance_bucket_ids
+            int* gpu_instance_bucket_ids,
+	    cudaStream_t stream
             )
 {
     unsigned int chunks = config.num_threads;
@@ -675,10 +676,10 @@ T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
     std::vector<T> partial(chunks, T::zero());
 
     const int length = total;
-    std::vector<cudaStream_t> streams(1);
-    for(int i = 0; i < 1; i++){
-      gpu::create_stream(&streams[i]);
-    }
+    //std::vector<cudaStream_t> streams(1);
+    //for(int i = 0; i < 1; i++){
+    //  gpu::create_stream(&streams[i]);
+    //}
 
     auto copy_back = [&](T& dst, const gpu::alt_bn128_g1& src, const int offset, cudaStream_t& stream){
       gpu::copy_gpu_to_cpu(dst.X.mont_repr.data, src.x.mont_repr_data + offset, 32, stream);
@@ -701,12 +702,13 @@ T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
           gpu_bucket_counters, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids,
           d_values2[0], d_buckets[0], d_buckets2[0], d_t_zero, 
           d_block_sums[0], d_block_sums2[0],
-          d_max_value, d_modulus, streams[0]);
-      copy_back(partial[i], d_buckets[0], 0, streams[0]);
+          d_max_value, d_modulus, stream);
+      copy_back(partial[i], d_buckets[0], 0, stream);
     }
 
     //copy_back(partial[chunks-1], d_buckets[chunks-1], 0);
-    gpu::sync_device();
+    //gpu::sync_device();
+    gpu::sync(stream);
     T final = partial[chunks - 1];
     for (int i = chunks - 2; i >= 0; i--)
     {
@@ -819,7 +821,7 @@ void multi_exp_inner_bellman_with_density_g2_gpu(
       gpu::copy_gpu_to_gpu(gpu_indexs, gpu_starts, (1<<c) * sizeof(int), stream);
       //gpu::sync_device();
       //d_values2.clear(stream);
-      gpu::split_to_bucket_g2(d_values, d_values2, d_density, d_bn_exponents.ptr, c, k, length, gpu_starts, gpu_indexs, stream);
+      gpu::split_to_bucket_g2(d_values, d_values2, d_density, d_bn_exponents.ptr, c, k, length, gpu_starts, gpu_indexs, gpu_instance_bucket_ids, stream);
 
       //gpu::sync_device();
 
@@ -847,8 +849,8 @@ void multi_exp_inner_bellman_with_density_g2_gpu(
         h_values2.release_host();
       }
 
-      d_buckets.clear(stream);
-      gpu::gpu_set_zero(gpu_instance_bucket_ids, (1<<c)*sizeof(int), stream);
+      //d_buckets.clear(stream);
+      //gpu::gpu_set_zero(gpu_instance_bucket_ids, (1<<c)*sizeof(int), stream);
       //gpu::gpu_set_zero(gpu_ids, (1<<c)*sizeof(int), stream);
       //gpu::sync_device();
 
@@ -1106,7 +1108,8 @@ T multi_exp_with_density_g2_gpu(typename std::vector<T>::const_iterator vec_star
             int* gpu_starts, 
             int *gpu_indexs,
             int *gpu_ids,
-            int* gpu_instance_bucket_ids
+            int* gpu_instance_bucket_ids,
+	    cudaStream_t stream
             )
 {
     unsigned int chunks = config.num_threads;
@@ -1119,10 +1122,10 @@ T multi_exp_with_density_g2_gpu(typename std::vector<T>::const_iterator vec_star
     std::vector<T> partial(chunks, T::zero());
 
     const int length = total;
-    std::vector<cudaStream_t> streams(1);
-    for(int i = 0; i < 1/*chunks*/; i++){
-      gpu::create_stream(&streams[i]);
-    }
+    //std::vector<cudaStream_t> streams(1);
+    //for(int i = 0; i < 1/*chunks*/; i++){
+    //  gpu::create_stream(&streams[i]);
+    //}
 
     auto copy_back = [&](T& dst, const gpu::alt_bn128_g2& src, const int offset, cudaStream_t& stream){
       gpu::copy_gpu_to_cpu(dst.X.c0.mont_repr.data, src.x.c0.mont_repr_data + offset, 32, stream);
@@ -1155,8 +1158,8 @@ T multi_exp_with_density_g2_gpu(typename std::vector<T>::const_iterator vec_star
           gpu_bucket_counters, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids,
           d_values2[0], d_buckets[0], d_buckets2[0], d_t_zero, 
           d_block_sums[0], d_block_sums2[0],
-          d_max_value, d_modulus, d_non_residue, streams[0]);
-      copy_back(partial[i], d_buckets[0], 0, streams[0]);
+          d_max_value, d_modulus, d_non_residue, stream);
+      copy_back(partial[i], d_buckets[0], 0, stream);
       //gpu::sync_device();
       //fprintf(fp, "%d:", i);
       //for(int j = 0; j < 4; j++){
@@ -1168,7 +1171,8 @@ T multi_exp_with_density_g2_gpu(typename std::vector<T>::const_iterator vec_star
     //fclose(fp);
 
     //copy_back(partial[chunks-1], d_buckets[chunks-1], 0);
-    gpu::sync_device();
+    //gpu::sync_device();
+    gpu::sync(stream);
     T final = partial[chunks - 1];
     for (int i = chunks - 2; i >= 0; i--)
     {
@@ -1361,7 +1365,9 @@ T multi_exp_gpu(typename std::vector<T>::const_iterator vec_start,
     static gpu::gpu_meta d_bucket_counters, d_starts, d_indexs, d_ids, d_instance_bucket_ids, d_density;
     static gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
     static bool first_init = true;
+    static cudaStream_t stream;
     if(first_init){
+      gpu::create_stream(&stream);
       d_t_zero.init(1);
       max_value.resize_host(1);
       dmax_value.resize(1);
@@ -1404,7 +1410,7 @@ T multi_exp_gpu(typename std::vector<T>::const_iterator vec_start,
     d_values.copy_from_cpu(h_values);
 
     T gpu_result;
-    gpu_result = multi_exp_with_density_gpu<T, FieldT, false, Method>(vec_start, vec_end, bn_exponents, density, config, d_values, (char*)d_density.ptr, d_bn_exponents, dmax_value, d_modulus, d_t_zero, d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2, (int*)d_bucket_counters.ptr, (int*)d_starts.ptr, (int*)d_indexs.ptr, (int*)d_ids.ptr, (int*)d_instance_bucket_ids.ptr);
+    gpu_result = multi_exp_with_density_gpu<T, FieldT, false, Method>(vec_start, vec_end, bn_exponents, density, config, d_values, (char*)d_density.ptr, d_bn_exponents, dmax_value, d_modulus, d_t_zero, d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2, (int*)d_bucket_counters.ptr, (int*)d_starts.ptr, (int*)d_indexs.ptr, (int*)d_ids.ptr, (int*)d_instance_bucket_ids.ptr, stream);
     
     if(false){
       d_values.release();
@@ -1628,8 +1634,10 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
       static gpu::gpu_meta d_counters, d_counters2, d_bucket_counters, d_starts, d_indexs, d_ids, d_instance_bucket_ids, d_density, d_flags, d_index_it, d_firsts, d_seconds;
       static gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
       static bool first_init = true;
+      static cudaStream_t stream;
 
       if(first_init){
+	gpu::create_stream(&stream);
         d_t_zero.init(1);
         d_t_one.init(1);
         d_field_zero.init(1);
@@ -1717,20 +1725,20 @@ T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_
           ranges_size, 
           (uint32_t*)d_firsts.ptr, (uint32_t*)d_seconds.ptr,
           dmax_value.ptr, d_t_zero, d_field_zero, d_field_one, (char*)d_density.ptr, d_bn_exponents.ptr, 
-          d_modulus.ptr, const_inv, d_field_modulus.ptr, const_field_inv, max_depth);
+          d_modulus.ptr, const_inv, d_field_modulus.ptr, const_field_inv, max_depth, stream);
 
       auto copy_back = [&](T& dst, const gpu::alt_bn128_g1& src, const int offset){
-        gpu::copy_gpu_to_cpu(dst.X.mont_repr.data, src.x.mont_repr_data + offset, 32);
-        gpu::copy_gpu_to_cpu(dst.Y.mont_repr.data, src.y.mont_repr_data + offset, 32);
-        gpu::copy_gpu_to_cpu(dst.Z.mont_repr.data, src.z.mont_repr_data + offset, 32);
+        gpu::copy_gpu_to_cpu(dst.X.mont_repr.data, src.x.mont_repr_data + offset, 32, stream);
+        gpu::copy_gpu_to_cpu(dst.Y.mont_repr.data, src.y.mont_repr_data + offset, 32, stream);
+        gpu::copy_gpu_to_cpu(dst.Z.mont_repr.data, src.z.mont_repr_data + offset, 32, stream);
       };
 
       T gpu_acc;
       copy_back(gpu_acc, d_partial, 0);
 
       //auto tmp = gpu_acc + multi_exp_with_density<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config);
-      gpu::copy_cpu_to_gpu(d_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size());
-      auto tmp = gpu_acc + libff::multi_exp_with_density_gpu<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config, d_values, (char*)d_density.ptr, d_bn_exponents, dmax_value, d_modulus, d_t_zero, d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2, (int*)d_bucket_counters.ptr, (int*)d_starts.ptr, (int*)d_indexs.ptr, (int*)d_ids.ptr, (int*)d_instance_bucket_ids.ptr);
+      gpu::copy_cpu_to_gpu(d_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size(), stream);
+      auto tmp = gpu_acc + libff::multi_exp_with_density_gpu<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config, d_values, (char*)d_density.ptr, d_bn_exponents, dmax_value, d_modulus, d_t_zero, d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2, (int*)d_bucket_counters.ptr, (int*)d_starts.ptr, (int*)d_indexs.ptr, (int*)d_ids.ptr, (int*)d_instance_bucket_ids.ptr, stream);
       //libff::leave_block("gpu multi exp with density");
       //libff::leave_block("call gpu");
 
