@@ -54,6 +54,7 @@ public:
     bool operator==(const mcl_bn128_G1 &other) const;
     bool operator!=(const mcl_bn128_G1 &other) const;
 
+    mcl_bn128_G1 gpu_add(const mcl_bn128_G1 &other) const;
     mcl_bn128_G1 operator+(const mcl_bn128_G1 &other) const;
     mcl_bn128_G1 operator-() const;
     mcl_bn128_G1 operator-(const mcl_bn128_G1 &other) const;
