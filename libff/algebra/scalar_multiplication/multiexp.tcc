@@ -1892,7 +1892,7 @@ T multi_exp_gpu_mcl(typename std::vector<T>::const_iterator vec_start,
     static gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
     static bool first_init = true;
     static cudaStream_t stream;
-    gpu::Fp_model d_one, d_p, d_a;
+    static gpu::Fp_model d_one, d_p, d_a;
     if(first_init){
       gpu::create_stream(&stream);
       d_t_zero.init(1);
@@ -1934,9 +1934,9 @@ T multi_exp_gpu_mcl(typename std::vector<T>::const_iterator vec_start,
     d_values.copy_from_cpu(h_values);
 
     T gpu_result;
-    enter_block("gpu multi_exp_with_density");
+    //enter_block("gpu multi_exp_with_density");
     gpu_result = multi_exp_with_density_gpu_mcl<T, FieldT, false, Method>(vec_start, vec_end, bn_exponents, density, config, d_values, (char*)d_density.ptr, d_bn_exponents, dmax_value, d_modulus, d_t_zero, d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2, (int*)d_bucket_counters.ptr, (int*)d_starts.ptr, (int*)d_indexs.ptr, (int*)d_ids.ptr, (int*)d_instance_bucket_ids.ptr, d_one, d_p, d_a, stream);
-    leave_block("gpu multi_exp_with_density");
+    //leave_block("gpu multi_exp_with_density");
 
     if(false){
       d_values.release();
