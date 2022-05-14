@@ -928,7 +928,7 @@ void multi_exp_inner_bellman_with_density_gpu_mcl(
                 buckets[id] = buckets[id] + bases[i];
             }
             flags[id] += 1;
-            if(id == 60870){
+            if(false){//h(id == 60870){
                 //write(fp1, bases[i]);
                 if(false){
                 gpu::copy_cpu_to_gpu(done.mont_repr_data, bases[0].pt.z.one().getUnit(), 32);
@@ -1031,6 +1031,52 @@ void multi_exp_inner_bellman_with_density_gpu_mcl(
       //
       //d_values2.clear(stream);
       gpu::mcl_split_to_bucket(d_values, d_values2, with_density, d_density, d_bn_exponents.ptr, c, k, length, gpu_starts, gpu_indexs, gpu_instance_bucket_ids, stream);
+      if(false){
+        gpu::mcl_bn128_g1 hvalues;
+        hvalues.init_host(length);
+        d_values2.copy_to_cpu(hvalues);
+        const int bucket_num = 1<<c;
+        std::vector<int> hstarts(bucket_num), hends(bucket_num);
+        gpu::copy_gpu_to_cpu(hstarts.data(), gpu_starts, bucket_num * sizeof(int));
+        gpu::copy_gpu_to_cpu(hends.data(), gpu_indexs, bucket_num * sizeof(int));
+        std::vector<T> buckets(bucket_num);
+        for(int i = 0; i < bucket_num; i++){
+            //T result;
+            //for(int j = hstarts[i]; j < hends[i]; j++){
+            //    T a;
+            //    copy_back(a, hvalues, j);
+            //   result = result + a;
+            //}
+            //buckets[i] = result;
+            int len = hends[i] - hstarts[i];
+            if(len == 0) continue;
+            std::vector<T> datas(len);
+            for(int j = 0; j < len; j++){
+                copy_back(datas[j], hvalues, hstarts[i] + j);
+            }
+            while(len > 1){
+                int half_len = (len + 1) / 2;
+                for(int j = 0; j < half_len; j++){
+                    T a = datas[j];
+                    if( j + half_len < len){
+                        a = a + datas[j + half_len];
+                    }
+                    datas[j] = a;
+                }
+                len = half_len;
+            }
+            buckets[i] = datas[0];
+        }
+        T result;
+        T running_sum;
+        for (size_t i = (1u << c) - 1; i > 0; i--)
+        {
+            running_sum = running_sum + buckets[i];
+            result = result + running_sum;
+        }
+        copy_t(result, d_buckets, 0);
+        return;
+      }
       //gpu::sync_device();
       //printf("3 compare result = %d\n", cmp_ret);
 
@@ -1049,21 +1095,110 @@ void multi_exp_inner_bellman_with_density_gpu_mcl(
         std::vector<int> hstarts(bucket_num);
         gpu::copy_gpu_to_cpu(hstarts.data(), gpu_starts, bucket_num*sizeof(int)); 
         for(int i = 0; i < bucket_num; i++){
-            T a;
-            copy_back_d(a, d_buckets, i);
-            if(a != buckets[i]){
+            T b1;
+            copy_back_d(b1, d_buckets, i);
+            if(b1 != buckets[i]){
                 printf("compare bucket %d %d, %d ,%d %d failed\n", length, i, correct_starts[i], hstarts[i], flags[i]);
-                f(a);
+                f(b1);
                 printf("\n");
                 f(buckets[i]);
                 //copy_t(buckets[i], d_buckets, i);
                 gpu::mcl_bucket_reduce_sum_one_bucket(tmp_values, i, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids, d_buckets, 1<<c, length, d_t_zero, d_one, d_p, d_a, specialA_, mode_, rp, stream);
-                copy_back_d(a, d_buckets, i);
-                if(a != buckets[i]){
+                T b2;
+                copy_back_d(b2, d_buckets, 0);
+                f(b2);
+                if(b2 != buckets[i]){
                     printf("compare bucket %d %d, %d ,%d %d also failed\n", length, i, correct_starts[i], hstarts[i], flags[i]);
                 }
+
+                gpu::mcl_bn128_g1 hvalues;
+                hvalues.init_host(length);
+                tmp_values.copy_to_cpu(hvalues);
+                std::vector<int> hstarts(bucket_num), hends(bucket_num);
+                gpu::copy_gpu_to_cpu(hstarts.data(), gpu_starts, bucket_num * sizeof(int));
+                gpu::copy_gpu_to_cpu(hends.data(), gpu_indexs, bucket_num * sizeof(int));
+                int len = hends[i]-hstarts[i];
+                printf("len=%d\n", len);
+
+                gpu::mcl_bn128_g1 dresult;
+                dresult.init_host(bucket_num);
+                d_buckets.copy_to_cpu(dresult);
+                std::vector<T> hresult(len);
+                T a, b;
+                copy_back(a, hvalues, hstarts[i]);
+                //printf("host a:\n");
+                //f(a);
+                copy_back(b, hvalues, hstarts[i] + 1);
+                //printf("host b:\n");
+                //f(b);
+                T result = a + b;
+                //printf("correct result:\n");
+                //f(result);
+                T tmp;
+                copy_back(tmp, dresult, 0);
+                //printf("gpu result:\n");
+                //f(tmp);
+
+                T res;
+                copy_back(res, hvalues, hstarts[i]);
+                for(int j = hstarts[i]+1, k = 0; j < hends[i]; j++, k++){
+                    copy_back(a, hvalues, j);
+                    res = res + a;
+                    hresult[k] = res;
+                    T tmp;
+                    copy_back(tmp, dresult, k);
+                    if(hresult[k] != tmp){
+                        printf("the first different is %d\n", k);
+                        printf("a\n");
+                        f(hresult[k-1]);
+                        printf("b\n");
+                        f(a);
+                        printf("correct:\n");
+                        f(hresult[k]);
+                        printf("gpu:\n");
+                        f(tmp);
+                        FILE *fpa=fopen("a.txt", "w");
+                        FILE *fpb=fopen("b.txt", "w");
+                        FILE *fpc=fopen("c.txt", "w");
+                        write(fpa, hresult[k-1]);
+                        write(fpb, a);
+                        write(fpc, hresult[k]);
+                        fclose(fpa);
+                        fclose(fpb);
+                        fclose(fpc);
+
+                        T t = hresult[k-1];
+                        t = t.gpu_add(a);
+                        if(t != hresult[k]){
+                            printf("compare failed\n");
+                        }else{
+                            printf("compare success\n");
+                        }
+                        break;
+                    }
+                }
+
             }
         }
+      }
+
+      if(false){
+        int bucket_num = 1 << c;
+        gpu::mcl_bn128_g1 hbuckets;
+        hbuckets.init_host(bucket_num * gpu::BUCKET_INSTANCES);
+        d_buckets.copy_to_cpu(hbuckets);
+        T result;
+        T running_sum;
+        for (size_t i = (1u << c) - 1; i > 0; i--)
+        {
+            T a;
+            copy_back(a, hbuckets, i);
+            running_sum = running_sum + a;
+            result = result + running_sum;
+        }
+        copy_t(result, d_buckets, 0);
+        return;
+
       }
       
       if(false){
