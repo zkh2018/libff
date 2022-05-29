@@ -539,6 +539,17 @@ Fp_model<n,modulus>& Fp_model<n,modulus>::operator*=(const Fp_model<n,modulus>& 
 }
 
 template<mp_size_t n, const bigint<n>& modulus>
+Fp_model<n,modulus>& Fp_model<n,modulus>::gpu_mul(const Fp_model<n,modulus>& other)
+{
+#ifdef PROFILE_OP_COUNTS
+    this->mul_cnt++;
+#endif
+
+    mul_reduce(other.mont_repr);
+    return *this;
+}
+
+template<mp_size_t n, const bigint<n>& modulus>
 Fp_model<n,modulus>& Fp_model<n,modulus>::operator^=(const unsigned long pow)
 {
     (*this) = power<Fp_model<n, modulus> >(*this, pow);

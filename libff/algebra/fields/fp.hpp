@@ -94,6 +94,7 @@ public:
     Fp_model& operator+=(const Fp_model& other);
     Fp_model& operator-=(const Fp_model& other);
     Fp_model& operator*=(const Fp_model& other);
+    Fp_model& gpu_mul(const Fp_model& other);
     Fp_model& operator^=(const unsigned long pow);
 
     template<mp_size_t m>

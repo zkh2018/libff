@@ -1259,7 +1259,7 @@ T multi_exp_with_density_gpu_mcl(typename std::vector<T>::const_iterator vec_sta
 
     unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
     chunks = (254 + c - 1) / c;
-    printf("c = %d, chunks=%d\n", c, chunks);
+    //printf("c = %d, chunks=%d\n", c, chunks);
 
     auto ranges = libsnark::get_cpu_ranges(0, total);
     std::vector<T> partial(chunks, T::zero());
