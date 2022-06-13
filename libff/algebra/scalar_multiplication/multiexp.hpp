@@ -15,6 +15,14 @@
 #include <cstddef>
 #include <vector>
 #include "prover_config.hpp"
+#include "cgbn_math.h"
+#include "cgbn_fp.h"
+#include "cgbn_alt_bn128_g1.h"
+#include "cgbn_alt_bn128_g2.h"
+#include "cgbn_multi_exp.h"
+#include "cgbn_multi_exp_g2.h"
+#include "low_func_gpu.h"
+#include <cuda_runtime.h>
 
 namespace libff {
 
@@ -47,6 +55,71 @@ enum multi_exp_method {
  multi_exp_method_BDLO12
 };
 
+struct GpuMclData{
+    gpu::mcl_bn128_g1 h_values, d_values, d_partial, d_t_zero, d_t_one;
+    std::vector<gpu::mcl_bn128_g1> d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2;
+    gpu::Fp_model h_scalars, d_scalars, d_field_zero, d_field_one;
+
+    gpu::gpu_meta d_counters, d_counters2, d_index_it, d_firsts, d_seconds, d_bucket_counters, d_starts, d_indexs, d_ids, d_instance_bucket_ids, d_density, d_flags;
+    gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
+    cudaStream_t stream;
+    gpu::Fp_model d_one, d_p, d_a;
+    GpuMclData(){
+        gpu::create_stream(&stream);
+        dmax_value.resize(1);
+        d_t_zero.init(1);
+        d_t_one.init(1);
+        d_field_zero.init(1);
+        d_field_one.init(1);
+        d_modulus.resize(1);
+        d_field_modulus.resize(1);
+        d_one.init(1);
+        d_p.init(1);
+        d_a.init(1);
+        d_values2.resize(1);
+        d_buckets.resize(1);
+        d_buckets2.resize(1);
+        d_block_sums.resize(1);
+        d_block_sums2.resize(1);
+        d_density.resize(1);
+    }
+
+    ~GpuMclData(){
+        h_values.release_host();
+        d_values.release();
+        d_partial.release();
+        for(int i = 0; i < 1; i++){
+            d_values2[i].release();
+            d_buckets[i].release();
+            d_buckets2[i].release();
+            d_block_sums[i].release();
+            d_block_sums2[i].release();
+        }
+        d_scalars.release();
+        h_scalars.release_host();
+        d_field_one.release();
+        d_field_zero.release();
+        d_density.release();
+        d_flags.release();
+        d_counters.release();
+        d_counters2.release();
+        d_index_it.release();
+        d_firsts.release();
+        d_seconds.release();
+        d_bucket_counters.release();
+        d_starts.release();
+        d_indexs.release();
+        d_ids.release();
+        d_instance_bucket_ids.release();
+        d_bn_exponents.release();
+        dmax_value.release();
+        d_modulus.release();
+        d_field_modulus.release();
+        d_t_zero.release();
+        d_t_one.release();
+        gpu::release_stream(stream);
+    }
+};
 /**
  * Computes the sum
  * \sum_i scalar_start[i] * vec_start[i]
