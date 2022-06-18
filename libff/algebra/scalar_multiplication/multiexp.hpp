@@ -117,6 +117,9 @@ struct GpuMclData{
         d_field_modulus.release();
         d_t_zero.release();
         d_t_one.release();
+        d_one.release();
+        d_p.release();
+        d_a.release();
         gpu::release_stream(stream);
     }
 };
