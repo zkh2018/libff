@@ -2008,38 +2008,19 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
         memcpy(dst.y.mont_repr_data + offset, src.pt.y.getUnit(), 32);
         memcpy(dst.z.mont_repr_data + offset, src.pt.z.getUnit(), 32);
     };
-    //enter_block("gpu multi_exp_with_density");
-    //enter_block("gpu init");
-    const int local_instances = BlockDepth * 64;
     unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
     unsigned int chunks = config.num_threads;
-    chunks = 1;//(254 + c - 1) / c;
+    chunks = 1;
     const int instances = gpu::BUCKET_INSTANCES;
     const int length = total;
     const int values_size = total;
 
-    //gpu::mcl_bn128_g1 h_values, d_values, d_t_zero;
-    //std::vector<gpu::mcl_bn128_g1> d_values2(chunks), d_buckets(chunks), d_buckets2(chunks), d_block_sums(chunks), d_block_sums2(chunks);
-    //static int* gpu_bucket_counters = nullptr, *gpu_starts = nullptr, *gpu_indexs, *gpu_ids, *gpu_instance_bucket_ids;
-    //static char *d_density;
-    //gpu::gpu_meta d_bucket_counters, d_starts, d_indexs, d_ids, d_instance_bucket_ids, d_density;
-    //gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
-    bool first_init = true;
     cudaStream_t& stream = gpu_mcl_data.stream;
-    //gpu::Fp_model d_one, d_p, d_a;
-    if(first_init){
-      gpu::create_stream(&stream);
-      //d_t_zero.init(1);
-      //d_field_modulus.resize(1);
-      copy_t(T::zero(), gpu_mcl_data.d_t_zero, 0, stream);
-        //d_one.init(1);
-        //d_p.init(1);
-        //d_a.init(1);
-        gpu::copy_cpu_to_gpu(gpu_mcl_data.d_one.mont_repr_data, vec_start[0].pt.z.one().getUnit(), 32, stream);
-        gpu::copy_cpu_to_gpu(gpu_mcl_data.d_p.mont_repr_data, vec_start[0].pt.z.getOp().p, 32, stream);
-        gpu::copy_cpu_to_gpu(gpu_mcl_data.d_a.mont_repr_data, vec_start[0].pt.a_.getUnit(), 32, stream);
-      first_init = false;
-    }
+    copy_t(T::zero(), gpu_mcl_data.d_t_zero, 0, stream);
+    gpu::copy_cpu_to_gpu(gpu_mcl_data.d_one.mont_repr_data, vec_start[0].pt.z.one().getUnit(), 32, stream);
+    gpu::copy_cpu_to_gpu(gpu_mcl_data.d_p.mont_repr_data, vec_start[0].pt.z.getOp().p, 32, stream);
+    gpu::copy_cpu_to_gpu(gpu_mcl_data.d_a.mont_repr_data, vec_start[0].pt.a_.getUnit(), 32, stream);
+
     gpu_mcl_data.h_values.resize_host(values_size);
     gpu_mcl_data.d_values.resize(values_size);
     gpu_mcl_data.d_bn_exponents.resize(bn_exponents.size());
@@ -2060,8 +2041,8 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
 
     memcpy(gpu_mcl_data.h_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size());
     gpu_mcl_data.d_bn_exponents.copy_from_host(gpu_mcl_data.h_bn_exponents, stream);
-    //uint64_t const_inv = vec_start[0].X.inv;
 
+#pragma omp parallel for
     for(int i = 0; i < values_size; i++){
       copy_t_h(vec_start[i], gpu_mcl_data.h_values, i);
     }
@@ -2607,10 +2588,12 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
         gpu::copy_cpu_to_gpu(gpu_mcl_data.d_seconds.ptr, seconds.data(), sizeof(uint32_t) * ranges_size, stream);
       uint64_t const_field_inv = scalar_start[0].inv;
 
+#pragma omp parallel for
       for(int i = 0; i < values_size; i++){
         copy_t_h(vec_start[i], gpu_mcl_data.h_values, i);
       }
       gpu_mcl_data.d_values.copy_from_cpu(gpu_mcl_data.h_values);
+#pragma omp parallel for
       for(int i = 0; i < scalar_size; i++){
         copy_field_h(scalar_start[i], gpu_mcl_data.h_scalars, i);
       }
