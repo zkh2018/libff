@@ -61,7 +61,7 @@ struct GpuMclData{
     gpu::Fp_model h_scalars, d_scalars, d_field_zero, d_field_one;
 
     gpu::gpu_meta d_counters, d_counters2, d_index_it, d_firsts, d_seconds, d_bucket_counters, d_starts, d_indexs, d_ids, d_instance_bucket_ids, d_density, d_flags;
-    gpu::gpu_buffer max_value, dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
+    gpu::gpu_buffer dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
     cudaStream_t stream;
     gpu::Fp_model d_one, d_p, d_a;
     GpuMclData(){
@@ -86,6 +86,7 @@ struct GpuMclData{
 
     ~GpuMclData(){
         h_values.release_host();
+        h_bn_exponents.release_host();
         d_values.release();
         d_partial.release();
         for(int i = 0; i < 1; i++){
