@@ -55,6 +55,7 @@ enum multi_exp_method {
  multi_exp_method_BDLO12
 };
 
+template<typename T, typename FieldT>
 struct GpuMclData{
     gpu::mcl_bn128_g1 h_values, d_values, d_partial, d_t_zero, d_t_one;
     std::vector<gpu::mcl_bn128_g1> d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2;
@@ -123,7 +124,47 @@ struct GpuMclData{
         d_a.release();
         gpu::release_stream(stream);
     }
+
 };
+
+template<typename T, typename FieldT>
+static void copy_back(T& dst, const gpu::mcl_bn128_g1& src, const int offset, gpu::CudaStream stream){
+    uint64_t tmp[4];
+    gpu::copy_gpu_to_cpu(tmp, src.x.mont_repr_data + offset, 32, stream);
+    gpu::sync(stream);
+    dst.pt.x.copy(tmp);
+    gpu::copy_gpu_to_cpu(tmp, src.y.mont_repr_data + offset, 32, stream);
+    gpu::sync(stream);
+    dst.pt.y.copy(tmp);
+    gpu::copy_gpu_to_cpu(tmp, src.z.mont_repr_data + offset, 32, stream);
+    gpu::sync(stream);
+    dst.pt.z.copy(tmp);
+}
+
+template<typename T, typename FieldT>
+static void copy_t(const T& src, gpu::mcl_bn128_g1& dst, const int offset, gpu::CudaStream stream){
+    gpu::copy_cpu_to_gpu(dst.x.mont_repr_data + offset, src.pt.x.getUnit(), 32, stream);
+    gpu::copy_cpu_to_gpu(dst.y.mont_repr_data + offset, src.pt.y.getUnit(), 32, stream);
+    gpu::copy_cpu_to_gpu(dst.z.mont_repr_data + offset, src.pt.z.getUnit(), 32, stream);
+}
+
+template<typename T, typename FieldT>
+static void copy_t_h(const T& src, gpu::alt_bn128_g1& dst, const int offset){
+    memcpy(dst.x.mont_repr_data + offset, src.pt.x.getUnit(), 32);
+    memcpy(dst.y.mont_repr_data + offset, src.pt.y.getUnit(), 32);
+    memcpy(dst.z.mont_repr_data + offset, src.pt.z.getUnit(), 32);
+}
+
+template<typename T, typename FieldT>
+static void copy_field(const FieldT& src, gpu::Fp_model& dst, const int offset, gpu::CudaStream stream){
+    gpu::copy_cpu_to_gpu(dst.mont_repr_data + offset, src.mont_repr.data, 32, stream);
+}
+
+template<typename T, typename FieldT>
+static void copy_field_h(const FieldT& src, gpu::Fp_model& dst, const int offset){
+    memcpy(dst.mont_repr_data + offset, src.mont_repr.data, 32);
+}
+
 /**
  * Computes the sum
  * \sum_i scalar_start[i] * vec_start[i]
