@@ -2032,10 +2032,6 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
     memcpy(gpu_mcl_data.h_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size());
     gpu_mcl_data.d_bn_exponents.copy_from_host(gpu_mcl_data.h_bn_exponents, gpu_mcl_data.stream);
 
-#pragma omp parallel for
-    for(int i = 0; i < values_size; i++){
-      libff::copy_t_h<T, FieldT>(vec_start[i], gpu_mcl_data.h_values, i);
-    }
 #endif
 }
 
@@ -2049,6 +2045,11 @@ T multi_exp_gpu_mcl(typename std::vector<T>::const_iterator vec_start,
             const libsnark::Config& config,
             GpuMclData<T, FieldT>& gpu_mcl_data)
 {
+  const int values_size = vec_end - vec_start;
+#pragma omp parallel for
+    for(int i = 0; i < values_size; i++){
+      libff::copy_t_h<T, FieldT>(vec_start[i], gpu_mcl_data.h_values, i);
+    }
     gpu_mcl_data.d_values.copy_from_cpu(gpu_mcl_data.h_values, gpu_mcl_data.stream);
     T gpu_result = multi_exp_with_density_gpu_mcl<T, FieldT, false, Method>(vec_start, vec_end, config, gpu_mcl_data.d_values, (char*)gpu_mcl_data.d_density.ptr, gpu_mcl_data.d_bn_exponents, gpu_mcl_data.dmax_value, gpu_mcl_data.d_modulus, gpu_mcl_data.d_t_zero, gpu_mcl_data.d_values2, gpu_mcl_data.d_buckets, gpu_mcl_data.d_buckets2, gpu_mcl_data.d_block_sums, gpu_mcl_data.d_block_sums2, (int*)gpu_mcl_data.d_bucket_counters.ptr, (int*)gpu_mcl_data.d_starts.ptr, (int*)gpu_mcl_data.d_indexs.ptr, (int*)gpu_mcl_data.d_ids.ptr, (int*)gpu_mcl_data.d_instance_bucket_ids.ptr, gpu_mcl_data.d_one, gpu_mcl_data.d_p, gpu_mcl_data.d_a, gpu_mcl_data.stream);
     return gpu_result;
@@ -2520,10 +2521,6 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
       uint64_t const_field_inv = scalar_start[0].inv;
 
 #pragma omp parallel for
-      for(int i = 0; i < values_size; i++){
-        libff::copy_t_h<T, FieldT>(vec_start[i], gpu_mcl_data.h_values, i);
-      }
-#pragma omp parallel for
       for(int i = 0; i < scalar_size; i++){
         libff::copy_field_h<T, FieldT>(scalar_start[i], gpu_mcl_data.h_scalars, i);
       }
@@ -2551,6 +2548,12 @@ T multi_exp_with_mixed_addition_gpu_mcl(typename std::vector<T>::const_iterator 
     const int ranges_size = ranges.size();
       uint64_t const_field_inv = scalar_start[0].inv;
       gpu::CudaStream& stream = gpu_mcl_data.stream;
+
+      const int values_size = vec_end - vec_start;
+#pragma omp parallel for
+      for(int i = 0; i < values_size; i++){
+        libff::copy_t_h<T, FieldT>(vec_start[i], gpu_mcl_data.h_values, i);
+      }
 
       gpu_mcl_data.d_values.copy_from_cpu(gpu_mcl_data.h_values);
       gpu_mcl_data.d_scalars.copy_from_cpu(gpu_mcl_data.h_scalars, stream);

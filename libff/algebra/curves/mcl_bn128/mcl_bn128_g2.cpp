@@ -150,8 +150,8 @@ mcl_bn128_G2 mcl_bn128_G2::gpu_add(const mcl_bn128_G2 &other) const
     this->add_cnt++;
 #endif
     mcl_bn128_G2 result;
-    //mcl::bn256::G2::add(result.pt, pt, other.pt);
-    mcl::bn256::G2::gpu_add_g2(result.pt, pt, other.pt);
+    mcl::bn256::G2::add(result.pt, pt, other.pt);
+    //mcl::bn256::G2::gpu_add_g2(result.pt, pt, other.pt);
     return result;
 }
 

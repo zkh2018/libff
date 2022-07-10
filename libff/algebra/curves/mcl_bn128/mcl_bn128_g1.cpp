@@ -115,8 +115,8 @@ mcl_bn128_G1 mcl_bn128_G1::gpu_add(const mcl_bn128_G1 &other) const
 {
     //return this->add(other);
     mcl_bn128_G1 result;
-    //G1::add(result.pt, pt, other.pt);
-    G1::gpu_add(result.pt, pt, other.pt);
+    G1::add(result.pt, pt, other.pt);
+    //G1::gpu_add(result.pt, pt, other.pt);
     return result;
 }
 
