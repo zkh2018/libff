@@ -65,6 +65,7 @@ struct GpuMclData{
     gpu::gpu_buffer dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
     cudaStream_t stream;
     gpu::Fp_model d_one, d_p, d_a;
+    int max_depth = 0;
     GpuMclData(){
         gpu::create_stream(&stream);
         dmax_value.resize(1);
