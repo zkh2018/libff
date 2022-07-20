@@ -15,6 +15,12 @@ set(
   "Default curve: one of ALT_BN128, BN128, EDWARDS, MNT4, MNT6"
 )
 
+if("${USE_GPU}")
+    message("libff USE_GPU=ON")
+    set(CMAKE_C_FLAGS " -DUSE_GPU ${CMAKE_C_FLAGS}")
+    set(CMAKE_CXX_FLAGS " -DUSE_GPU ${CMAKE_CXX_FLAGS}")
+endif()
+
 option(
   DEBUG
   "Enable debugging mode"

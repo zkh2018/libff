@@ -6,9 +6,12 @@
  *****************************************************************************/
 
 #include <libff/algebra/curves/alt_bn128/alt_bn128_g1.hpp>
+
+#ifdef USE_GPU
 #include "cgbn_math.h"
 #include "cgbn_fp.h"
 #include "cgbn_alt_bn128_g1.h"
+#endif
 
 namespace libff {
 
@@ -141,7 +144,7 @@ bool alt_bn128_G1::operator!=(const alt_bn128_G1& other) const
 
 alt_bn128_G1 alt_bn128_G1::gpu_add(const alt_bn128_G1 &other) const
 {
-
+#ifdef USE_GPU
   //call gpu 
   gpu::alt_bn128_g1 da, db, dc;
   const int data_num = 1;
@@ -192,6 +195,10 @@ alt_bn128_G1 alt_bn128_G1::gpu_add(const alt_bn128_G1 &other) const
   db.release();
   dc.release();
   return ret;
+  #else
+  alt_bn128_G1 ret;
+  return ret; 
+  #endif
 }
 
 alt_bn128_G1 alt_bn128_G1::operator+(const alt_bn128_G1 &other) const

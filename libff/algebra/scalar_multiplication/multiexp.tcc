@@ -522,6 +522,7 @@ T multi_exp_inner_bellman_with_density(
     return result;
 }
 
+#ifdef USE_GPU
 template<typename T, typename FieldT, bool with_density>
 T multi_exp_inner_bellman_with_density_test(
     typename std::vector<T>::const_iterator bases,
@@ -708,6 +709,7 @@ void multi_exp_inner_bellman_with_density_gpu(
       //return tmp_result;
     }
 }
+
 template<typename T, typename FieldT, bool with_density, multi_exp_method Method>
 T multi_exp_with_density_gpu(typename std::vector<T>::const_iterator vec_start,
             typename std::vector<T>::const_iterator vec_end,
@@ -873,7 +875,6 @@ void multi_exp_inner_bellman_with_density_gpu_mcl(
     };
 
     if(true){
-    #ifdef MCL_GPU
       const int specialA_ = bases[0].pt.specialA_;
       const int mode_ = bases[0].pt.mode_;
       const uint64_t rp = bases[0].pt.x.getOp().rp;
@@ -920,7 +921,6 @@ void multi_exp_inner_bellman_with_density_gpu_mcl(
       //clock_t t4 = clock();
       //printf("%f %f %f %f\n", f(t1, t0), f(t2, t1), f(t3, t2), f(t4, t3));
       //return tmp_result;
-#endif
     }
 }
 
@@ -950,7 +950,6 @@ T multi_exp_with_density_gpu_mcl(typename std::vector<T>::const_iterator vec_sta
             cudaStream_t stream
             )
 {
-#ifdef MCL_GPU
     unsigned int chunks = config.num_threads;
     const size_t total = vec_end - vec_start;
 
@@ -1004,8 +1003,6 @@ T multi_exp_with_density_gpu_mcl(typename std::vector<T>::const_iterator vec_sta
         final = final + partial[i];
     }
     return final;
-#endif
-    return T::zero();
 }
 
 template<typename T, typename FieldT, bool with_density>
@@ -1068,7 +1065,6 @@ void multi_exp_inner_bellman_with_density_gpu_mcl_g2(
     };
 
     if(true){
-    #ifdef MCL_GPU
       const int specialA_ = bases[0].pt.specialA_;
       const int mode_ = bases[0].pt.mode_;
       const uint64_t rp = bases[0].pt.x.getOp().rp;
@@ -1113,7 +1109,6 @@ void multi_exp_inner_bellman_with_density_gpu_mcl_g2(
       //clock_t t4 = clock();
       //printf("%f %f %f %f\n", f(t1, t0), f(t2, t1), f(t3, t2), f(t4, t3));
       //return tmp_result;
-#endif
     }
 }
 
@@ -1145,7 +1140,6 @@ T multi_exp_with_density_gpu_mcl_g2(typename std::vector<T>::const_iterator vec_
             cudaStream_t stream
             )
 {
-#ifdef MCL_GPU
     unsigned int chunks = config.num_threads;
     const size_t total = vec_end - vec_start;
 
@@ -1209,8 +1203,6 @@ T multi_exp_with_density_gpu_mcl_g2(typename std::vector<T>::const_iterator vec_
         final = final + partial[i];
     }
     return final;
-#endif
-    return T::zero();
 }
 
 template<typename T, typename FieldT, bool with_density>
@@ -1684,6 +1676,8 @@ T multi_exp_with_density_g2_gpu(typename std::vector<T>::const_iterator vec_star
     return final;
 }
 
+#endif
+
 template<typename T, typename FieldT, bool with_density, multi_exp_method Method>
 T multi_exp_with_density(typename std::vector<T>::const_iterator vec_start,
             typename std::vector<T>::const_iterator vec_end,
@@ -1756,7 +1750,7 @@ T multi_exp_with_density(typename std::vector<T>::const_iterator vec_start,
     return final;
 }
 
-
+#ifdef USE_GPU
 template<typename T, typename FieldT, bool with_density, multi_exp_method Method>
 T multi_exp_with_density_test(typename std::vector<T>::const_iterator vec_start,
             typename std::vector<T>::const_iterator vec_end,
@@ -1793,6 +1787,7 @@ T multi_exp_with_density_test(typename std::vector<T>::const_iterator vec_start,
     }
     return final;
 }
+#endif
 
 template<typename T, typename FieldT, multi_exp_method Method>
 T multi_exp(typename std::vector<T>::const_iterator vec_start,
@@ -1828,6 +1823,7 @@ T multi_exp(typename std::vector<T>::const_iterator vec_start,
     return multi_exp_with_density<T, FieldT, false, Method>(vec_start, vec_end, bn_exponents, density, config);
 }
 
+#ifdef USE_GPU
 //T = alt_bn128_g1
 template<typename T, typename FieldT, multi_exp_method Method>
 T multi_exp_gpu(typename std::vector<T>::const_iterator vec_start,
@@ -1997,7 +1993,6 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
 
     // Dummy density vector
     std::vector<bool> density;
-#ifdef MCL_GPU
     unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
     unsigned int chunks = config.num_threads;
     chunks = 1;
@@ -2032,7 +2027,6 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
     memcpy(gpu_mcl_data.h_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size());
     gpu_mcl_data.d_bn_exponents.copy_from_host(gpu_mcl_data.h_bn_exponents, gpu_mcl_data.stream);
 
-#endif
 }
 
 //T = mcl_bn128_g1
@@ -2054,6 +2048,8 @@ T multi_exp_gpu_mcl(typename std::vector<T>::const_iterator vec_start,
     T gpu_result = multi_exp_with_density_gpu_mcl<T, FieldT, false, Method>(vec_start, vec_end, config, gpu_mcl_data.d_values, (char*)gpu_mcl_data.d_density.ptr, gpu_mcl_data.d_bn_exponents, gpu_mcl_data.dmax_value, gpu_mcl_data.d_modulus, gpu_mcl_data.d_t_zero, gpu_mcl_data.d_values2, gpu_mcl_data.d_buckets, gpu_mcl_data.d_buckets2, gpu_mcl_data.d_block_sums, gpu_mcl_data.d_block_sums2, (int*)gpu_mcl_data.d_bucket_counters.ptr, (int*)gpu_mcl_data.d_starts.ptr, (int*)gpu_mcl_data.d_indexs.ptr, (int*)gpu_mcl_data.d_ids.ptr, (int*)gpu_mcl_data.d_instance_bucket_ids.ptr, gpu_mcl_data.d_one, gpu_mcl_data.d_p, gpu_mcl_data.d_a, gpu_mcl_data.stream);
     return gpu_result;
 }
+
+#endif
 
 template<typename T, typename FieldT, multi_exp_method Method>
 T multi_exp_with_mixed_addition(typename std::vector<T>::const_iterator vec_start,
@@ -2140,6 +2136,7 @@ T multi_exp_with_mixed_addition(typename std::vector<T>::const_iterator vec_star
     return acc + multi_exp_with_density<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config);
 }
 
+#ifdef USE_GPU
 template<typename T, typename FieldT, multi_exp_method Method>
 T multi_exp_with_mixed_addition_gpu(typename std::vector<T>::const_iterator vec_start,
                                 typename std::vector<T>::const_iterator vec_end,
@@ -2446,7 +2443,6 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
     //enter_block("cpu multi_exp_with_density");
     //leave_block("cpu multi_exp_with_density");
     if(true){
-#ifdef MCL_GPU
       const int local_instances = BlockDepth * 64;
       const int blocks = (max_depth + local_instances - 1) / local_instances;
       unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
@@ -2525,7 +2521,6 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
         libff::copy_field_h<T, FieldT>(scalar_start[i], gpu_mcl_data.h_scalars, i);
       }
       //gpu::copy_cpu_to_gpu(gpu_mcl_data.d_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size(), stream);
-#endif
     }
 }
 
@@ -2592,6 +2587,7 @@ T multi_exp_with_mixed_addition_gpu_mcl(typename std::vector<T>::const_iterator 
 
       return tmp;
 }
+#endif
 
 template <typename T>
 T inner_product(typename std::vector<T>::const_iterator a_start,

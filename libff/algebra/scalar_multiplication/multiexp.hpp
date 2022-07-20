@@ -15,6 +15,8 @@
 #include <cstddef>
 #include <vector>
 #include "prover_config.hpp"
+
+#ifdef USE_GPU
 #include "cgbn_math.h"
 #include "cgbn_fp.h"
 #include "cgbn_alt_bn128_g1.h"
@@ -23,6 +25,7 @@
 #include "cgbn_multi_exp_g2.h"
 #include "low_func_gpu.h"
 #include <cuda_runtime.h>
+#endif
 
 namespace libff {
 
@@ -55,6 +58,7 @@ enum multi_exp_method {
  multi_exp_method_BDLO12
 };
 
+#ifdef USE_GPU
 template<typename T, typename FieldT>
 struct GpuMclData{
     gpu::mcl_bn128_g1 h_values, d_values, d_partial, d_t_zero, d_t_one;
@@ -165,6 +169,7 @@ template<typename T, typename FieldT>
 static void copy_field_h(const FieldT& src, gpu::Fp_model& dst, const int offset){
     memcpy(dst.mont_repr_data + offset, src.mont_repr.data, 32);
 }
+#endif
 
 /**
  * Computes the sum
