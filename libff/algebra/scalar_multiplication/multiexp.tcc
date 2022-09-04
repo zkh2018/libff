@@ -1067,7 +1067,7 @@ void multi_exp_inner_bellman_with_density_gpu_mcl_g2(
     if(true){
       const int specialA_ = bases[0].pt.specialA_;
       const int mode_ = bases[0].pt.mode_;
-      const uint64_t rp = bases[0].pt.x.getOp().rp;
+      const uint64_t rp = bases[0].pt.x.a.getOp().rp;
 
       //clock_t t0 = clock();
       //printf("1\n"); 

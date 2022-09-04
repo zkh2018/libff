@@ -59,16 +59,17 @@ enum multi_exp_method {
 };
 
 #ifdef USE_GPU
-template<typename T, typename FieldT>
+template<typename T, typename FieldT, typename GpuType=gpu::mcl_bn128_g1>
 struct GpuMclData{
-    gpu::mcl_bn128_g1 h_values, d_values, d_partial, d_t_zero, d_t_one;
-    std::vector<gpu::mcl_bn128_g1> d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2;
+    GpuType h_values, d_values, d_partial, d_t_zero, d_t_one;
+    std::vector<GpuType> d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2;
     gpu::Fp_model h_scalars, d_scalars, d_field_zero, d_field_one;
 
     gpu::gpu_meta d_counters, d_counters2, d_index_it, d_firsts, d_seconds, d_bucket_counters, d_starts, d_indexs, d_ids, d_instance_bucket_ids, d_density, d_flags;
     gpu::gpu_buffer dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
     cudaStream_t stream;
     gpu::Fp_model d_one, d_p, d_a;
+    gpu::Fp_model2 d_a2;
     int max_depth = 0;
     GpuMclData(){
         gpu::create_stream(&stream);
@@ -82,6 +83,7 @@ struct GpuMclData{
         d_one.init(1);
         d_p.init(1);
         d_a.init(1);
+        d_a2.init(1);
         d_values2.resize(1);
         d_buckets.resize(1);
         d_buckets2.resize(1);
@@ -127,6 +129,7 @@ struct GpuMclData{
         d_one.release();
         d_p.release();
         d_a.release();
+        d_a2.release();
         gpu::release_stream(stream);
     }
 
@@ -147,6 +150,31 @@ static void copy_back(T& dst, const gpu::mcl_bn128_g1& src, const int offset, gp
 }
 
 template<typename T, typename FieldT>
+static void copy_back(T& dst, const gpu::mcl_bn128_g2& src, const int offset, gpu::CudaStream stream){
+    uint64_t tmp[4];
+    gpu::copy_gpu_to_cpu(tmp, src.x.c0.mont_repr_data + offset, 32, stream);
+    gpu::sync(stream);
+    dst.pt.x.a.copy(tmp);
+    gpu::copy_gpu_to_cpu(tmp, src.x.c1.mont_repr_data + offset, 32, stream);
+    gpu::sync(stream);
+    dst.pt.x.b.copy(tmp);
+
+    gpu::copy_gpu_to_cpu(tmp, src.y.c0.mont_repr_data + offset, 32, stream);
+    gpu::sync(stream);
+    dst.pt.y.a.copy(tmp);
+    gpu::copy_gpu_to_cpu(tmp, src.y.c1.mont_repr_data + offset, 32, stream);
+    gpu::sync(stream);
+    dst.pt.y.b.copy(tmp);
+
+    gpu::copy_gpu_to_cpu(tmp, src.z.c0.mont_repr_data + offset, 32, stream);
+    gpu::sync(stream);
+    dst.pt.z.a.copy(tmp);
+    gpu::copy_gpu_to_cpu(tmp, src.z.c1.mont_repr_data + offset, 32, stream);
+    gpu::sync(stream);
+    dst.pt.z.b.copy(tmp);
+}
+
+template<typename T, typename FieldT>
 static void copy_t(const T& src, gpu::mcl_bn128_g1& dst, const int offset, gpu::CudaStream stream){
     gpu::copy_cpu_to_gpu(dst.x.mont_repr_data + offset, src.pt.x.getUnit(), 32, stream);
     gpu::copy_cpu_to_gpu(dst.y.mont_repr_data + offset, src.pt.y.getUnit(), 32, stream);
@@ -154,10 +182,32 @@ static void copy_t(const T& src, gpu::mcl_bn128_g1& dst, const int offset, gpu::
 }
 
 template<typename T, typename FieldT>
+static void copy_t(const T& src, gpu::mcl_bn128_g2& dst, const int offset, gpu::CudaStream stream){
+    gpu::copy_cpu_to_gpu(dst.x.c0.mont_repr_data + offset, src.pt.x.a.getUnit(), 32, stream);
+    gpu::copy_cpu_to_gpu(dst.x.c1.mont_repr_data + offset, src.pt.x.b.getUnit(), 32, stream);
+
+    gpu::copy_cpu_to_gpu(dst.y.c0.mont_repr_data + offset, src.pt.y.a.getUnit(), 32, stream);
+    gpu::copy_cpu_to_gpu(dst.y.c1.mont_repr_data + offset, src.pt.y.b.getUnit(), 32, stream);
+
+    gpu::copy_cpu_to_gpu(dst.z.c0.mont_repr_data + offset, src.pt.z.a.getUnit(), 32, stream);
+    gpu::copy_cpu_to_gpu(dst.z.c1.mont_repr_data + offset, src.pt.z.b.getUnit(), 32, stream);
+}
+
+template<typename T, typename FieldT>
 static void copy_t_h(const T& src, gpu::alt_bn128_g1& dst, const int offset){
     memcpy(dst.x.mont_repr_data + offset, src.pt.x.getUnit(), 32);
     memcpy(dst.y.mont_repr_data + offset, src.pt.y.getUnit(), 32);
     memcpy(dst.z.mont_repr_data + offset, src.pt.z.getUnit(), 32);
+}
+
+template<typename T, typename FieldT>
+static void copy_t_h(const T& src, gpu::alt_bn128_g2& dst, const int offset){
+    memcpy(dst.x.c0.mont_repr_data + offset, src.pt.x.a.getUnit(), 32);
+    memcpy(dst.x.c1.mont_repr_data + offset, src.pt.x.b.getUnit(), 32);
+    memcpy(dst.y.c0.mont_repr_data + offset, src.pt.y.a.getUnit(), 32);
+    memcpy(dst.y.c1.mont_repr_data + offset, src.pt.y.b.getUnit(), 32);
+    memcpy(dst.z.c0.mont_repr_data + offset, src.pt.z.a.getUnit(), 32);
+    memcpy(dst.z.c1.mont_repr_data + offset, src.pt.z.b.getUnit(), 32);
 }
 
 template<typename T, typename FieldT>
