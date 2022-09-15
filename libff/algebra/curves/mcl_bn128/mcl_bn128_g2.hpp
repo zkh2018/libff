@@ -59,6 +59,7 @@ public:
     mcl_bn128_G2 operator-(const mcl_bn128_G2 &other) const;
 
     mcl_bn128_G2 add(const mcl_bn128_G2 &other) const;
+    mcl_bn128_G2 add_debug(const mcl_bn128_G2 &other) const;
     mcl_bn128_G2 gpu_add(const mcl_bn128_G2 &other) const;
     mcl_bn128_G2 mixed_add(const mcl_bn128_G2 &other) const;
     mcl_bn128_G2 dbl() const;

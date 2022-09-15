@@ -144,6 +144,16 @@ mcl_bn128_G2 mcl_bn128_G2::add(const mcl_bn128_G2 &other) const
     return result;
 }
 
+mcl_bn128_G2 mcl_bn128_G2::add_debug(const mcl_bn128_G2 &other) const
+{
+#ifdef PROFILE_OP_COUNTS
+    this->add_cnt++;
+#endif
+    mcl_bn128_G2 result;
+    mcl::bn256::G2::add_debug(result.pt, pt, other.pt);
+    return result;
+}
+
 mcl_bn128_G2 mcl_bn128_G2::gpu_add(const mcl_bn128_G2 &other) const
 {
 #ifdef PROFILE_OP_COUNTS
