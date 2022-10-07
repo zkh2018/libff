@@ -50,7 +50,6 @@ public:
     bool operator==(const alt_bn128_G1 &other) const;
     bool operator!=(const alt_bn128_G1 &other) const;
 
-    alt_bn128_G1 gpu_add(const alt_bn128_G1 &other) const;
     alt_bn128_G1 operator+(const alt_bn128_G1 &other) const;
     alt_bn128_G1 operator-() const;
     alt_bn128_G1 operator-(const alt_bn128_G1 &other) const;

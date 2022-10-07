@@ -13,3 +13,5 @@ endif()
 include_directories(CGBN)
 include_directories(CGBN/include)
 include_directories(CGBN/samples)
+
+include_directories(BigInt/include)

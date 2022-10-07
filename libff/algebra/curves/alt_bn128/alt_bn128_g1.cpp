@@ -7,12 +7,6 @@
 
 #include <libff/algebra/curves/alt_bn128/alt_bn128_g1.hpp>
 
-#ifdef USE_GPU
-#include "cgbn_math.h"
-#include "cgbn_fp.h"
-#include "cgbn_alt_bn128_g1.h"
-#endif
-
 namespace libff {
 
 #ifdef PROFILE_OP_COUNTS
@@ -140,65 +134,6 @@ bool alt_bn128_G1::operator==(const alt_bn128_G1 &other) const
 bool alt_bn128_G1::operator!=(const alt_bn128_G1& other) const
 {
     return !(operator==(other));
-}
-
-alt_bn128_G1 alt_bn128_G1::gpu_add(const alt_bn128_G1 &other) const
-{
-#ifdef USE_GPU
-  //call gpu 
-  gpu::alt_bn128_g1 da, db, dc;
-  const int data_num = 1;
-  da.init(data_num);
-  db.init(data_num);
-  dc.init(data_num);
-  auto copy = [](const alt_bn128_G1& src, gpu::alt_bn128_g1& dst){
-    gpu::copy_cpu_to_gpu(dst.x.mont_repr_data, src.X.mont_repr.data, 32);
-    auto *p = src.X.get_modulus().data;
-    //gpu::copy_cpu_to_gpu(dst.x.modulus_data, p, 32);
-    //dst.x.inv = src.X.inv;
-
-    gpu::copy_cpu_to_gpu(dst.y.mont_repr_data, src.Y.mont_repr.data, 32);
-    //gpu::copy_cpu_to_gpu(dst.y.modulus_data, src.Y.get_modulus().data, 32);
-    //dst.y.inv = src.Y.inv;
-
-    gpu::copy_cpu_to_gpu(dst.z.mont_repr_data, src.Z.mont_repr.data, 32);
-    //gpu::copy_cpu_to_gpu(dst.z.modulus_data, src.Z.get_modulus().data, 32);
-    //dst.z.inv = src.Z.inv;
-  };
-  auto copy_back = [&](alt_bn128_G1& dst, const gpu::alt_bn128_g1& src){
-    gpu::copy_gpu_to_cpu(dst.X.mont_repr.data, src.x.mont_repr_data, 32);
-    gpu::copy_gpu_to_cpu(dst.Y.mont_repr.data, src.y.mont_repr_data, 32);
-    gpu::copy_gpu_to_cpu(dst.Z.mont_repr.data, src.z.mont_repr_data, 32);
-  };
-
-  copy(*this, da);
-  copy(other, db);
-
-  gpu::gpu_buffer max_value, dmax_value, d_modulus;
-  max_value.resize_host(1);
-  dmax_value.resize(1);
-  d_modulus.resize(1);
-  for(int i = 0; i < BITS/32; i++){
-    max_value.ptr->_limbs[i] = 0xffffffff;
-  }
-  dmax_value.copy_from_host(max_value);
-  const uint64_t const_inv = this->X.inv;
-  gpu::copy_cpu_to_gpu(d_modulus.ptr->_limbs, this->X.get_modulus().data, 32);
-  gpu::alt_bn128_g1_add(da, db, dc, data_num, dmax_value.ptr, d_modulus.ptr, const_inv);
-
-  alt_bn128_G1 ret;
-  copy_back(ret, dc);
-
-  dmax_value.release();
-  max_value.release_host();
-  da.release();
-  db.release();
-  dc.release();
-  return ret;
-  #else
-  alt_bn128_G1 ret;
-  return ret; 
-  #endif
 }
 
 alt_bn128_G1 alt_bn128_G1::operator+(const alt_bn128_G1 &other) const
