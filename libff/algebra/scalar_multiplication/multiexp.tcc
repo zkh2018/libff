@@ -1414,7 +1414,7 @@ T multi_exp_with_mixed_addition_gpu_mcl(typename std::vector<T>::const_iterator 
         libff::copy_t_h<T, FieldT>(vec_start[i], gpu_mcl_data.h_values, i);
       }
 
-      gpu_mcl_data.d_values.copy_from_cpu(gpu_mcl_data.h_values);
+      gpu_mcl_data.d_values.copy_from_cpu(gpu_mcl_data.h_values, stream);
       gpu_mcl_data.d_scalars.copy_from_cpu(gpu_mcl_data.h_scalars, stream);
       gpu::mcl_bn128_g1_reduce_sum(
           gpu_mcl_data.d_values, 
@@ -1432,6 +1432,7 @@ T multi_exp_with_mixed_addition_gpu_mcl(typename std::vector<T>::const_iterator 
 
       T gpu_acc;
       libff::copy_back<T, FieldT>(gpu_acc, gpu_mcl_data.d_partial, 0, stream);
+      gpu::sync(stream);
 
       //auto tmp = gpu_acc + multi_exp_with_density<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config);
       auto tmp = gpu_acc + libff::multi_exp_with_density_gpu_mcl<T, FieldT, true, Method>(vec_start, vec_end, config, gpu_mcl_data.d_values, (char*)gpu_mcl_data.d_density.ptr, gpu_mcl_data.d_bn_exponents, gpu_mcl_data.dmax_value, gpu_mcl_data.d_modulus, gpu_mcl_data.d_t_zero, gpu_mcl_data.d_values2, gpu_mcl_data.d_buckets, gpu_mcl_data.d_buckets2, gpu_mcl_data.d_block_sums, gpu_mcl_data.d_block_sums2, (int*)gpu_mcl_data.d_bucket_counters.ptr, (int*)gpu_mcl_data.d_starts.ptr, (int*)gpu_mcl_data.d_indexs.ptr, (int*)gpu_mcl_data.d_ids.ptr, (int*)gpu_mcl_data.d_instance_bucket_ids.ptr, gpu_mcl_data.d_one, gpu_mcl_data.d_p, gpu_mcl_data.d_a, stream);
