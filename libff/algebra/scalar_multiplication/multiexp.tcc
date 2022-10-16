@@ -935,11 +935,11 @@ T multi_exp_with_density_gpu_mcl_g2(typename std::vector<T>::const_iterator vec_
         gpu::copy_gpu_to_cpu(dst.z.c1.mont_repr_data, src.z.c1.mont_repr_data, n * 32, stream);
     };
 
-    std::vector<gpu::mcl_bn128_g2> h_buckets(chunks);
+    //std::vector<gpu::mcl_bn128_g2> h_buckets(chunks);
     
     for (size_t i = 0; i < chunks; ++i)
     {
-        h_buckets[i].init_host((1<<c));
+        //h_buckets[i].init_host((1<<c));
         multi_exp_inner_bellman_with_density_gpu_mcl_g2<T, FieldT, with_density>(
                 vec_start, vec_end, exponents, density, c, i, config.prefetch_stride, config.multi_exp_look_ahead,
                 d_values, d_density, d_bn_exponents,
@@ -1211,6 +1211,7 @@ T multi_exp_with_mixed_addition(typename std::vector<T>::const_iterator vec_star
     std::vector<T> partial(ranges.size(), T::zero());
     std::vector<unsigned int> counters(ranges.size(), 0);
 
+if(false){
 #ifdef MULTICORE
     #pragma omp parallel for
 #endif
@@ -1256,10 +1257,37 @@ T multi_exp_with_mixed_addition(typename std::vector<T>::const_iterator vec_star
         acc = acc + partial[i];
         totalCount += counters[i];
     }
-
     leave_block("Process scalar vector");
 
     return acc + multi_exp_with_density<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config);
+}else{
+    T acc = T::zero();
+    for(int i = 0; i < scalar_length; i++){
+            if (scalar_start[i] == zero)
+            {
+                // do nothing
+                //++num_skip;
+            }
+            else if (scalar_start[i] == one)
+            {
+                acc = acc + vec_start[i];
+                //++num_add;
+            }
+            else
+            {
+                //if (vec_start[i] != T::zero())
+                {
+                    density[i] = true;
+                    bn_exponents[i] = scalar_start[i].as_bigint();
+                }
+                //++num_other;
+            }
+    }
+    leave_block("Process scalar vector");
+
+    return acc + multi_exp_with_density<T, FieldT, true, Method>(vec_start, vec_end, bn_exponents, density, config);
+}
+
 }
 
 #ifdef USE_GPU
@@ -1348,10 +1376,10 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
         gpu_mcl_data.d_block_sums2[i].resize((1<<c) / 32/32);
       }
 
-      gpu_mcl_data.d_counters.resize(ranges_size * max_depth * sizeof(uint32_t));
-      gpu_mcl_data.d_counters2.resize(ranges_size * sizeof(uint32_t));
-      gpu_mcl_data.d_firsts.resize(ranges_size * sizeof(uint32_t));
-      gpu_mcl_data.d_seconds.resize(ranges_size * sizeof(uint32_t));
+      //gpu_mcl_data.d_counters.resize(ranges_size * max_depth * sizeof(uint32_t));
+      //gpu_mcl_data.d_counters2.resize(ranges_size * sizeof(uint32_t));
+      //gpu_mcl_data.d_firsts.resize(ranges_size * sizeof(uint32_t));
+      //gpu_mcl_data.d_seconds.resize(ranges_size * sizeof(uint32_t));
       gpu_mcl_data.d_bucket_counters.resize((1<<c) * sizeof(int) * chunks);
       gpu_mcl_data.d_starts.resize(((1<<c)+1) * sizeof(int) * chunks * 2);
       gpu_mcl_data.d_indexs.resize((1<<c)*sizeof(int)*chunks*2);
@@ -1360,24 +1388,24 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
       gpu_mcl_data.d_density.resize(density.size());
       gpu_mcl_data.d_flags.resize(scalar_size);
 
-      int total_indices = 0;
-      for(int i = 0; i < ranges_size; i++){
-          total_indices = std::max(total_indices, (int)ranges[i].second);
-      }
-      std::vector<uint32_t> firsts(ranges_size), seconds(ranges_size);
-      std::vector<size_t> indices(total_indices);
+      //int total_indices = 0;
+      //for(int i = 0; i < ranges_size; i++){
+      //    total_indices = std::max(total_indices, (int)ranges[i].second);
+      //}
+      //std::vector<uint32_t> firsts(ranges_size), seconds(ranges_size);
+      //std::vector<size_t> indices(total_indices);
 
-      for(int i = 0; i < total_indices; i++){
-          indices[i] = i;
-      }
-      for(int i = 0; i < ranges_size; i++){
-          firsts[i] = ranges[i].first;
-          seconds[i] = ranges[i].second;
-      }
-      gpu_mcl_data.d_index_it.resize(total_indices * sizeof(size_t));
-      gpu::copy_cpu_to_gpu(gpu_mcl_data.d_index_it.ptr, indices.data(), sizeof(size_t) * total_indices, stream);
-      gpu::copy_cpu_to_gpu(gpu_mcl_data.d_firsts.ptr, firsts.data(), sizeof(uint32_t) * ranges_size, stream);
-      gpu::copy_cpu_to_gpu(gpu_mcl_data.d_seconds.ptr, seconds.data(), sizeof(uint32_t) * ranges_size, stream);
+      //for(int i = 0; i < total_indices; i++){
+      //    indices[i] = i;
+      //}
+      //for(int i = 0; i < ranges_size; i++){
+      //    firsts[i] = ranges[i].first;
+      //    seconds[i] = ranges[i].second;
+      //}
+      //gpu_mcl_data.d_index_it.resize(total_indices * sizeof(size_t));
+      //gpu::copy_cpu_to_gpu(gpu_mcl_data.d_index_it.ptr, indices.data(), sizeof(size_t) * total_indices, stream);
+      //gpu::copy_cpu_to_gpu(gpu_mcl_data.d_firsts.ptr, firsts.data(), sizeof(uint32_t) * ranges_size, stream);
+      //gpu::copy_cpu_to_gpu(gpu_mcl_data.d_seconds.ptr, seconds.data(), sizeof(uint32_t) * ranges_size, stream);
       uint64_t const_field_inv = scalar_start[0].inv;
 
 #pragma omp parallel for
@@ -1400,13 +1428,13 @@ T multi_exp_with_mixed_addition_gpu_mcl(typename std::vector<T>::const_iterator 
 
     const size_t scalar_length = std::distance(scalar_start, scalar_end);
     auto ranges = libsnark::get_cpu_ranges(0, scalar_length);
-    int max_depth = 0;
-    for(int i = 0; i < ranges.size(); i++){
-      max_depth = std::max(max_depth, (int)(ranges[i].second - ranges[i].first));
-    }
+    //int max_depth = 0;
+    //for(int i = 0; i < ranges.size(); i++){
+    //  max_depth = std::max(max_depth, (int)(ranges[i].second - ranges[i].first));
+    //}
     const int ranges_size = ranges.size();
-      uint64_t const_field_inv = scalar_start[0].inv;
-      gpu::CudaStream& stream = gpu_mcl_data.stream;
+    uint64_t const_field_inv = scalar_start[0].inv;
+    gpu::CudaStream& stream = gpu_mcl_data.stream;
 
       const int values_size = vec_end - vec_start;
 #pragma omp parallel for
@@ -1416,19 +1444,15 @@ T multi_exp_with_mixed_addition_gpu_mcl(typename std::vector<T>::const_iterator 
 
       gpu_mcl_data.d_values.copy_from_cpu(gpu_mcl_data.h_values, stream);
       gpu_mcl_data.d_scalars.copy_from_cpu(gpu_mcl_data.h_scalars, stream);
-      gpu::mcl_bn128_g1_reduce_sum(
+      gpu::lt_reduce_sum(
           gpu_mcl_data.d_values, 
           gpu_mcl_data.d_scalars, 
-          (size_t*)gpu_mcl_data.d_index_it.ptr, 
           gpu_mcl_data.d_partial, 
-         (uint32_t*)gpu_mcl_data.d_counters.ptr, 
           (char*)gpu_mcl_data.d_flags.ptr,
-          ranges_size, 
-          (uint32_t*)gpu_mcl_data.d_firsts.ptr, (uint32_t*)gpu_mcl_data.d_seconds.ptr,
           gpu_mcl_data.d_t_zero, gpu_mcl_data.d_field_zero, gpu_mcl_data.d_field_one, (char*)gpu_mcl_data.d_density.ptr, gpu_mcl_data.d_bn_exponents.ptr, 
           gpu_mcl_data.d_field_modulus.ptr, const_field_inv, 
           gpu_mcl_data.d_one, gpu_mcl_data.d_p, gpu_mcl_data.d_a, vec_start[0].pt.specialA_, vec_start[0].pt.mode_, vec_start[0].pt.x.getOp().rp,
-          max_depth, stream);
+          scalar_length, stream);
 
       T gpu_acc;
       libff::copy_back<T, FieldT>(gpu_acc, gpu_mcl_data.d_partial, 0, stream);
