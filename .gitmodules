@@ -7,6 +7,6 @@
 [submodule "depends/mcl"]
 	path = depends/mcl
 	url = https://github.com/herumi/mcl.git
-[submodule "depends/CGBN"]
-	path = depends/CGBN
-	url = git@github.com:zkh2018/CGBN.git
+[submodule "depends/mcl_gpu"]
+	path = depends/mcl_gpu
+	url = git@github.com:CortexFoundation/mcl_gpu.git
