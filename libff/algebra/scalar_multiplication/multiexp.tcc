@@ -1089,6 +1089,7 @@ T multi_exp(typename std::vector<T>::const_iterator vec_start,
 template<typename T, typename FieldT, multi_exp_method Method>
 void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_start,
             typename std::vector<T>::const_iterator vec_end,
+            gpu::Fp_model& d_scalars,
             typename std::vector<FieldT>::const_iterator scalar_start,
             typename std::vector<FieldT>::const_iterator scalar_end,
             std::vector<bigint<FieldT::num_limbs>>& scratch_exponents,
@@ -1096,27 +1097,6 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
             GpuMclData<T, FieldT>& gpu_mcl_data)
 {
     const size_t total = vec_end - vec_start;
-    std::vector<bigint<FieldT::num_limbs>> bn_exponents(total);
-
-    if (bn_exponents.size() < total)
-    {
-        bn_exponents.resize(total);
-    }
-
-    //enter_block("Convert to bigint");
-    auto ranges = libsnark::get_cpu_ranges(0, total);
-#ifdef MULTICORE
-    #pragma omp parallel for
-#endif
-    for (size_t j = 0; j < ranges.size(); j++)
-    {
-        for (unsigned int i = ranges[j].first; i < ranges[j].second; i++)
-        {
-            bn_exponents[i] = scalar_start[i].as_bigint();
-        }
-    }
-    //leave_block("Convert to bigint");
-
     // Dummy density vector
     std::vector<bool> density;
     unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
@@ -1134,8 +1114,8 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
 
     gpu_mcl_data.h_values.resize_host(values_size);
     gpu_mcl_data.d_values.resize(values_size);
-    gpu_mcl_data.d_bn_exponents.resize(bn_exponents.size());
-    gpu_mcl_data.h_bn_exponents.resize_host(bn_exponents.size());
+    //gpu_mcl_data.d_bn_exponents.resize(bn_exponents.size());
+    //gpu_mcl_data.h_bn_exponents.resize_host(bn_exponents.size());
     for(int i = 0; i < chunks; i++){
       gpu_mcl_data.d_values2[i].resize(length);
       gpu_mcl_data.d_buckets[i].resize((1<<c) * instances);
@@ -1150,9 +1130,14 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
     gpu_mcl_data.d_instance_bucket_ids.resize((length+1) * sizeof(int) * chunks * 2);
     gpu_mcl_data.d_density.resize(density.size());
 
-    memcpy(gpu_mcl_data.h_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size());
-    gpu_mcl_data.d_bn_exponents.copy_from_host(gpu_mcl_data.h_bn_exponents, gpu_mcl_data.stream);
-
+    //memcpy(gpu_mcl_data.h_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size());
+    uint64_t const_field_inv = FieldT::inv;
+    gpu_mcl_data.d_bn_exponents.ptr = d_scalars.mont_repr_data;
+    gpu_mcl_data.d_bn_exponents.n = d_scalars._count;
+    //gpu_mcl_data.d_bn_exponents.copy_from_host(gpu_mcl_data.h_bn_exponents, gpu_mcl_data.stream);
+    gpu::copy_cpu_to_gpu(gpu_mcl_data.d_field_modulus.ptr->_limbs, scalar_start[0].get_modulus().data, 32, stream);
+    gpu::mcl_as_bigint(d_scalars, gpu_mcl_data.d_bn_exponents.ptr, total, gpu_mcl_data.d_field_modulus.ptr, const_field_inv, gpu_mcl_data.stream); 
+    //gpu::sync(gpu_mcl_data.stream);
 }
 
 //T = mcl_bn128_g1
