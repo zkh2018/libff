@@ -71,7 +71,7 @@ struct GpuMclData{
     gpu::Fp_model d_one, d_p, d_a;
     gpu::Fp_model2 d_a2;
     int max_depth = 0;
-    GpuMclData(){
+    void init(){
         gpu::create_stream(&stream);
         dmax_value.resize(1);
         d_t_zero.init(1);
@@ -91,8 +91,11 @@ struct GpuMclData{
         d_block_sums2.resize(1);
         d_density.resize(1);
     }
+    GpuMclData(){
+        init();
+    }
 
-    ~GpuMclData(){
+    void release(){
         h_values.release_host();
         h_bn_exponents.release_host();
         d_values.release();
@@ -131,6 +134,70 @@ struct GpuMclData{
         d_a.release();
         d_a2.release();
         gpu::release_stream(stream);
+    }
+
+    ~GpuMclData(){
+        release();
+    }
+
+    void reinit(){
+        //release();
+        //init();
+        //h_values.release_host();
+        //h_bn_exponents.release_host();
+        //d_values.release();
+        //d_partial.release();
+        for(int i = 0; i < 1; i++){
+            //d_values2[i].release();
+            //d_buckets[i].release();
+            //d_buckets2[i].release();
+            //d_block_sums[i].release();
+            //d_block_sums2[i].release();
+        }
+        //d_scalars.release();
+        //h_scalars.release_host();
+        //d_field_one.release();
+        //d_field_zero.release();
+        //d_density.release();
+        d_flags.release();
+        //d_counters.release();
+        //d_counters2.release();
+        ///d_index_it.release();
+        //d_firsts.release();
+        //d_seconds.release();
+        //d_bucket_counters.release();
+        //d_starts.release();
+        //d_indexs.release();
+        //d_ids.release();
+        //d_instance_bucket_ids.release();
+        d_bn_exponents.release();
+        //dmax_value.release();
+        //d_modulus.release();
+        //d_field_modulus.release();
+        //d_t_zero.release();
+        //d_t_one.release();
+        //d_one.release();
+        //d_p.release();
+        //d_a.release();
+        //d_a2.release();
+
+        //dmax_value.resize(1);
+        //d_t_zero.init(1);
+        //d_t_one.init(1);
+        //d_one.init(1);
+        //d_p.init(1);
+        //d_a.init(1);
+        //d_a2.init(1);
+        //d_field_zero.init(1);
+        //d_field_one.init(1);
+        //d_modulus.resize(1);
+        //d_field_modulus.resize(1);
+        //d_values2.resize(1);
+        //d_buckets.resize(1);
+        //d_buckets2.resize(1);
+        //d_block_sums.resize(1);
+        //d_block_sums2.resize(1);
+        //d_density.resize(1);
     }
 
 };

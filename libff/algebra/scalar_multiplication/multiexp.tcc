@@ -633,7 +633,6 @@ void multi_exp_inner_bellman_with_density_gpu_mcl(
 
       //d_buckets.clear(stream);
       //gpu::sync_device();
-      gpu::mcl_bn128_g1 tmp_values;
       gpu::mcl_bucket_reduce_sum(d_values2, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids, d_buckets, 1<<c, length, d_t_zero, d_one, d_p, d_a, specialA_, mode_, rp, stream);
 
       //gpu::sync_device();
@@ -687,7 +686,6 @@ T multi_exp_with_density_gpu_mcl(typename std::vector<T>::const_iterator vec_sta
 
     unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
     chunks = (254 + c - 1) / c;
-    //printf("c = %d, chunks=%d\n", c, chunks);
 
     auto ranges = libsnark::get_cpu_ranges(0, total);
     std::vector<T> partial(chunks, T::zero());
@@ -718,6 +716,90 @@ T multi_exp_with_density_gpu_mcl(typename std::vector<T>::const_iterator vec_sta
           d_values2[0], d_buckets[0], d_buckets2[0], d_t_zero, 
           d_block_sums[0], d_block_sums2[0],
           d_max_value, d_modulus, d_one, d_p, d_a, stream);
+      copy_back(partial[i], d_buckets[0], 0, stream);
+    }
+
+    //copy_back(partial[chunks-1], d_buckets[chunks-1], 0);
+    //gpu::sync_device();
+    gpu::sync(stream);
+    T final = partial[chunks - 1];
+    for (int i = chunks - 2; i >= 0; i--)
+    {
+        for (size_t j = 0; j < c; j++)
+        {
+            final = final.dbl();
+        }
+        //copy_back(partial[i], d_buckets[i], 0);
+        final = final + partial[i];
+    }
+    return final;
+}
+
+template<typename T, typename FieldT, bool with_density, multi_exp_method Method>
+T multi_exp_with_density_gpu_mcl_at(typename std::vector<T>::const_iterator vec_start,
+            typename std::vector<T>::const_iterator vec_end,
+            const libsnark::Config& config,
+            gpu::mcl_bn128_g1 d_values,
+            char* d_density,
+            gpu::gpu_buffer d_bn_exponents,
+            gpu::gpu_buffer d_max_value,
+            gpu::gpu_buffer d_modulus,
+            gpu::mcl_bn128_g1 d_t_zero,
+            std::vector<gpu::mcl_bn128_g1> d_values2,
+            std::vector<gpu::mcl_bn128_g1> d_buckets,
+            std::vector<gpu::mcl_bn128_g1> d_buckets2,
+            std::vector<gpu::mcl_bn128_g1> d_block_sums,
+            std::vector<gpu::mcl_bn128_g1> d_block_sums2,
+            int* gpu_bucket_counters,
+            int* gpu_starts, 
+            int *gpu_indexs,
+            int *gpu_ids,
+            int* gpu_instance_bucket_ids,
+            gpu::Fp_model d_one, 
+            gpu::Fp_model d_p,
+            gpu::Fp_model d_a,
+            cudaStream_t stream
+            )
+{
+    unsigned int chunks = config.num_threads;
+    const size_t total = vec_end - vec_start;
+
+    //unsigned int c = config.multi_exp_c == 0 ? 15 : config.multi_exp_c;
+    unsigned int c = 1;
+    chunks = (254 + c - 1) / c;
+
+    auto ranges = libsnark::get_cpu_ranges(0, total);
+    std::vector<T> partial(chunks, T::zero());
+
+    const int length = total;
+
+    auto copy_back = [&](T& dst, const gpu::mcl_bn128_g1& src, const int offset, cudaStream_t& stream){
+        uint64_t tmp[4];
+        gpu::copy_gpu_to_cpu(tmp, src.x.mont_repr_data + offset, 32, stream);
+        gpu::sync(stream);
+        dst.pt.x.copy(tmp);
+        gpu::copy_gpu_to_cpu(tmp, src.y.mont_repr_data + offset, 32, stream);
+        gpu::sync(stream);
+        dst.pt.y.copy(tmp);
+        gpu::copy_gpu_to_cpu(tmp, src.z.mont_repr_data + offset, 32, stream);
+        gpu::sync(stream);
+        dst.pt.z.copy(tmp);
+    };
+
+    const int specialA_ = vec_start[0].pt.specialA_;
+    const int mode_ = vec_start[0].pt.mode_;
+    const uint64_t rp = vec_start[0].pt.x.getOp().rp;
+    //const int n = 1 << c;
+    for (size_t i = 0; i < chunks; ++i)
+    {
+      //multi_exp_inner_bellman_with_density_gpu_mcl<T, FieldT, with_density>(
+      //    vec_start, vec_end, c, i, config.prefetch_stride, config.multi_exp_look_ahead,
+      //    d_values, d_density, d_bn_exponents,
+      //    gpu_bucket_counters, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids,
+      //    d_values2[0], d_buckets[0], d_buckets2[0], d_t_zero, 
+      //    d_block_sums[0], d_block_sums2[0],
+      //    d_max_value, d_modulus, d_one, d_p, d_a, stream);
+      gpu::multi_exp_inner_bellman_with_density(d_values, d_bn_exponents.ptr, d_buckets[0], d_buckets2[0], c, i, length, d_one, d_p, d_a, specialA_, mode_, rp, stream); 
       copy_back(partial[i], d_buckets[0], 0, stream);
     }
 
@@ -855,7 +937,7 @@ void multi_exp_inner_bellman_with_density_gpu_mcl_g2(
 
       gpu::mcl_bucket_reduce_sum_g2(d_values2, gpu_starts, gpu_indexs, gpu_ids, gpu_instance_bucket_ids, d_buckets, 1<<c, length, d_t_zero, d_one, d_p, d_a, specialA_, mode_, rp, stream);
 
-      gpu::mcl_reverse_g2(d_buckets, d_buckets2, 1<<c, instances, stream);
+      gpu::mcl_reverse_g2(d_buckets, d_buckets2, 1<<c, 1, stream);
 
       gpu::mcl_prefix_sum_g2(d_buckets2, d_block_sums, d_block_sums2, 1<<c, d_one, d_p, d_a, specialA_, mode_, rp, stream);
 
@@ -989,14 +1071,14 @@ T multi_exp_with_density(typename std::vector<T>::const_iterator vec_start,
     unsigned int chunks = config.num_threads;
     const size_t total = vec_end - vec_start;
 
-    unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
+    unsigned int c = config.multi_exp_c == 0 ? 15: config.multi_exp_c;
     chunks = (254 + c - 1) / c;
 
     auto ranges = libsnark::get_cpu_ranges(0, total);
     std::vector<T> partial(chunks, T::zero());
-#ifdef MULTICORE
-#pragma omp parallel for
-#endif
+//#ifdef MULTICORE
+//#pragma omp parallel for
+//#endif
     for (size_t i = 0; i < chunks; ++i)
     {
         switch(config.multi_exp_prefetch_locality)
@@ -1118,7 +1200,7 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
     //gpu_mcl_data.h_bn_exponents.resize_host(bn_exponents.size());
     for(int i = 0; i < chunks; i++){
       gpu_mcl_data.d_values2[i].resize(length);
-      gpu_mcl_data.d_buckets[i].resize((1<<c) * instances);
+      gpu_mcl_data.d_buckets[i].resize((1<<c));
       gpu_mcl_data.d_buckets2[i].resize((1<<c));
       gpu_mcl_data.d_block_sums[i].resize((1<<c) / 32);
       gpu_mcl_data.d_block_sums2[i].resize((1<<c) / 32/32);
@@ -1134,6 +1216,8 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
     uint64_t const_field_inv = FieldT::inv;
     gpu_mcl_data.d_bn_exponents.ptr = d_scalars.mont_repr_data;
     gpu_mcl_data.d_bn_exponents.n = d_scalars._count;
+    //d_scalars.mont_repr_data = nullptr;
+    d_scalars._count = 0;
     //gpu_mcl_data.d_bn_exponents.copy_from_host(gpu_mcl_data.h_bn_exponents, gpu_mcl_data.stream);
     gpu::copy_cpu_to_gpu(gpu_mcl_data.d_field_modulus.ptr->_limbs, scalar_start[0].get_modulus().data, 32, stream);
     gpu::mcl_as_bigint(d_scalars, gpu_mcl_data.d_bn_exponents.ptr, total, gpu_mcl_data.d_field_modulus.ptr, const_field_inv, gpu_mcl_data.stream); 
@@ -1325,7 +1409,7 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
     if(true){
       const int local_instances = BlockDepth * 64;
       const int blocks = (max_depth + local_instances - 1) / local_instances;
-      unsigned int c = config.multi_exp_c == 0 ? 16 : config.multi_exp_c;
+      unsigned int c = config.multi_exp_c == 0 ? 15 : config.multi_exp_c;
       //unsigned int chunks = config.num_threads;
       unsigned int chunks = 1;//(254 + c - 1) / c;
       const int instances = gpu::BUCKET_INSTANCES;
@@ -1355,7 +1439,7 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
       gpu_mcl_data.h_bn_exponents.resize_host(bn_exponents.size());
       for(int i = 0; i < chunks; i++){
         gpu_mcl_data.d_values2[i].resize(length);
-        gpu_mcl_data.d_buckets[i].resize((1<<c) * instances);
+        gpu_mcl_data.d_buckets[i].resize((1<<c));
         gpu_mcl_data.d_buckets2[i].resize((1<<c));
         gpu_mcl_data.d_block_sums[i].resize((1<<c) / 32);
         gpu_mcl_data.d_block_sums2[i].resize((1<<c) / 32/32);
