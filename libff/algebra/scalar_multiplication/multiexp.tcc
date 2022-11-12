@@ -1217,7 +1217,7 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
     gpu_mcl_data.d_bn_exponents.ptr = d_scalars.mont_repr_data;
     gpu_mcl_data.d_bn_exponents.n = d_scalars._count;
     //d_scalars.mont_repr_data = nullptr;
-    d_scalars._count = 0;
+    ///d_scalars._count = 0;
     //gpu_mcl_data.d_bn_exponents.copy_from_host(gpu_mcl_data.h_bn_exponents, gpu_mcl_data.stream);
     gpu::copy_cpu_to_gpu(gpu_mcl_data.d_field_modulus.ptr->_limbs, scalar_start[0].get_modulus().data, 32, stream);
     gpu::mcl_as_bigint(d_scalars, gpu_mcl_data.d_bn_exponents.ptr, total, gpu_mcl_data.d_field_modulus.ptr, const_field_inv, gpu_mcl_data.stream); 

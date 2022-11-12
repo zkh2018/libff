@@ -61,6 +61,7 @@ enum multi_exp_method {
 #ifdef USE_GPU
 template<typename T, typename FieldT, typename GpuType=gpu::mcl_bn128_g1>
 struct GpuMclData{
+    int device_id = 0;
     GpuType h_values, d_values, d_partial, d_t_zero, d_t_one;
     std::vector<GpuType> d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2;
     gpu::Fp_model h_scalars, d_scalars, d_field_zero, d_field_one;
@@ -91,7 +92,9 @@ struct GpuMclData{
         d_block_sums2.resize(1);
         d_density.resize(1);
     }
-    GpuMclData(){
+    GpuMclData(const int device_id = 0){
+        this->device_id = device_id;
+        cudaSetDevice(device_id); 
         init();
     }
 
@@ -159,7 +162,7 @@ struct GpuMclData{
         //d_field_one.release();
         //d_field_zero.release();
         //d_density.release();
-        d_flags.release();
+        //d_flags.release();
         //d_counters.release();
         //d_counters2.release();
         ///d_index_it.release();
@@ -170,7 +173,7 @@ struct GpuMclData{
         //d_indexs.release();
         //d_ids.release();
         //d_instance_bucket_ids.release();
-        d_bn_exponents.release();
+        //d_bn_exponents.release();
         //dmax_value.release();
         //d_modulus.release();
         //d_field_modulus.release();
