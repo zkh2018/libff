@@ -1436,7 +1436,7 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
       gpu_mcl_data.d_scalars.resize(scalar_size);
       gpu_mcl_data.d_partial.resize(values_size);
       gpu_mcl_data.d_bn_exponents.resize(bn_exponents.size());
-      gpu_mcl_data.h_bn_exponents.resize_host(bn_exponents.size());
+      //gpu_mcl_data.h_bn_exponents.resize_host(bn_exponents.size());
       for(int i = 0; i < chunks; i++){
         gpu_mcl_data.d_values2[i].resize(length);
         gpu_mcl_data.d_buckets[i].resize((1<<c));
@@ -1455,26 +1455,10 @@ void multi_exp_with_mixed_addition_gpu_mcl_preprocess(typename std::vector<T>::c
       gpu_mcl_data.d_ids.resize(((1<<c)+1) * sizeof(int) * chunks * 2);
       gpu_mcl_data.d_instance_bucket_ids.resize((length+1) * sizeof(int) * chunks * 2);
       gpu_mcl_data.d_density.resize(density.size());
-      gpu_mcl_data.d_flags.resize(scalar_size);
+      gpu_mcl_data.d_flags.resize(scalar_size*4);
+      gpu::gpu_set_zero(gpu_mcl_data.d_flags.ptr, scalar_size*4, stream);
+      gpu_mcl_data.d_bn_exponents.clear(stream);
 
-      //int total_indices = 0;
-      //for(int i = 0; i < ranges_size; i++){
-      //    total_indices = std::max(total_indices, (int)ranges[i].second);
-      //}
-      //std::vector<uint32_t> firsts(ranges_size), seconds(ranges_size);
-      //std::vector<size_t> indices(total_indices);
-
-      //for(int i = 0; i < total_indices; i++){
-      //    indices[i] = i;
-      //}
-      //for(int i = 0; i < ranges_size; i++){
-      //    firsts[i] = ranges[i].first;
-      //    seconds[i] = ranges[i].second;
-      //}
-      //gpu_mcl_data.d_index_it.resize(total_indices * sizeof(size_t));
-      //gpu::copy_cpu_to_gpu(gpu_mcl_data.d_index_it.ptr, indices.data(), sizeof(size_t) * total_indices, stream);
-      //gpu::copy_cpu_to_gpu(gpu_mcl_data.d_firsts.ptr, firsts.data(), sizeof(uint32_t) * ranges_size, stream);
-      //gpu::copy_cpu_to_gpu(gpu_mcl_data.d_seconds.ptr, seconds.data(), sizeof(uint32_t) * ranges_size, stream);
       uint64_t const_field_inv = scalar_start[0].inv;
 
 #pragma omp parallel for
