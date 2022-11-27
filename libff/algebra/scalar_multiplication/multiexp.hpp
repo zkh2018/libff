@@ -19,6 +19,7 @@
 #ifdef USE_GPU
 #include "cgbn_math.h"
 #include "cgbn_fp.h"
+#include "common.h"
 #include "cgbn_alt_bn128_g1.h"
 #include "cgbn_alt_bn128_g2.h"
 #include "cgbn_multi_exp.h"

@@ -1171,7 +1171,7 @@ T multi_exp(typename std::vector<T>::const_iterator vec_start,
 template<typename T, typename FieldT, multi_exp_method Method>
 void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_start,
             typename std::vector<T>::const_iterator vec_end,
-            gpu::Fp_model& d_scalars,
+            gpu::Buffer<>& d_scalars,
             typename std::vector<FieldT>::const_iterator scalar_start,
             typename std::vector<FieldT>::const_iterator scalar_end,
             std::vector<bigint<FieldT::num_limbs>>& scratch_exponents,
@@ -1214,13 +1214,13 @@ void multi_exp_gpu_mcl_preprocess(typename std::vector<T>::const_iterator vec_st
 
     //memcpy(gpu_mcl_data.h_bn_exponents.ptr, bn_exponents.data(), 32 * bn_exponents.size());
     uint64_t const_field_inv = FieldT::inv;
-    gpu_mcl_data.d_bn_exponents.ptr = d_scalars.mont_repr_data;
-    gpu_mcl_data.d_bn_exponents.n = d_scalars._count;
-    //d_scalars.mont_repr_data = nullptr;
-    ///d_scalars._count = 0;
+    gpu_mcl_data.d_bn_exponents.ptr = (cgbn_mem_t<BITS>*)d_scalars.ptr_;
+    gpu_mcl_data.d_bn_exponents.n = d_scalars.len_;
     //gpu_mcl_data.d_bn_exponents.copy_from_host(gpu_mcl_data.h_bn_exponents, gpu_mcl_data.stream);
     gpu::copy_cpu_to_gpu(gpu_mcl_data.d_field_modulus.ptr->_limbs, scalar_start[0].get_modulus().data, 32, stream);
     gpu::mcl_as_bigint(d_scalars, gpu_mcl_data.d_bn_exponents.ptr, total, gpu_mcl_data.d_field_modulus.ptr, const_field_inv, gpu_mcl_data.stream); 
+    //d_scalars.ptr_ = nullptr;
+    //d_scalars.len_ = 0;
     //gpu::sync(gpu_mcl_data.stream);
 }
 
