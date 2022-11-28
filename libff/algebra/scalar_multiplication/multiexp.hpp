@@ -67,15 +67,18 @@ struct GpuMclData{
     std::vector<GpuType> d_values2, d_buckets, d_buckets2, d_block_sums, d_block_sums2;
     gpu::Fp_model h_scalars, d_scalars, d_field_zero, d_field_one;
 
-    gpu::gpu_meta d_counters, d_counters2, d_index_it, d_firsts, d_seconds, d_bucket_counters, d_starts, d_indexs, d_ids, d_instance_bucket_ids, d_density, d_flags;
-    gpu::gpu_buffer dmax_value, d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
+    gpu::Buffer<int, 1> d_counters, d_firsts, d_seconds, d_bucket_counters, d_starts, d_indexs, d_ids, d_instance_bucket_ids;
+    gpu::Buffer<uint64_t, 1> d_index_it;
+    gpu::Buffer<char, 1> d_density, d_flags;
+    gpu::gpu_buffer d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
     cudaStream_t stream;
     gpu::Fp_model d_one, d_p, d_a;
     gpu::Fp_model2 d_a2;
     int max_depth = 0;
+    gpu::GPUContext* gpu_ctx_;
+    gpu::CPUContext* cpu_ctx_ = new gpu::CPUContext();
     void init(){
         gpu::create_stream(&stream);
-        dmax_value.resize(1);
         d_t_zero.init(1);
         d_t_one.init(1);
         d_field_zero.init(1);
@@ -91,10 +94,47 @@ struct GpuMclData{
         d_buckets2.resize(1);
         d_block_sums.resize(1);
         d_block_sums2.resize(1);
-        d_density.resize(1);
+        d_density.resize(gpu_ctx_, 1);
     }
-    GpuMclData(const int device_id = 0){
+
+    GpuMclData(gpu::GPUContext* gpu_ctx, const int device_id = 0){
         this->device_id = device_id;
+        assert(gpu_ctx != nullptr);
+        {
+            d_counters.ctx_ = gpu_ctx;
+            d_counters.name_ = std::string("d_counters");
+
+            d_index_it.ctx_ = gpu_ctx;
+            d_index_it.name_ = std::string("d_index_it");
+
+            d_firsts.ctx_ = gpu_ctx;
+            d_firsts.name_ = std::string("d_firsts");
+
+            d_seconds.ctx_ = gpu_ctx;
+            d_seconds.name_= std::string("d_seconds");
+
+            d_bucket_counters.ctx_ = gpu_ctx;
+            d_bucket_counters.name_ = std::string("d_bucket_counters");
+
+            d_starts.ctx_ = gpu_ctx;
+            d_starts.name_ = std::string("d_starts");
+
+            d_indexs.ctx_ = gpu_ctx;
+            d_indexs.name_ = std::string("d_indexs");
+
+            d_ids.ctx_ = gpu_ctx;
+            d_ids.name_ = std::string("d_ids");
+
+            d_instance_bucket_ids.ctx_ = gpu_ctx;
+            d_instance_bucket_ids.name_ = std::string("d_instance_bucket_ids");
+
+            d_density.ctx_ = gpu_ctx;
+            d_density.name_ = std::string("d_density");
+
+            d_flags.ctx_ = gpu_ctx;
+            d_flags.name_ = std::string("d_flags");
+        }
+        gpu_ctx_ = gpu_ctx;
         cudaSetDevice(device_id); 
         init();
     }
@@ -118,7 +158,6 @@ struct GpuMclData{
         d_density.release();
         d_flags.release();
         d_counters.release();
-        d_counters2.release();
         d_index_it.release();
         d_firsts.release();
         d_seconds.release();
@@ -128,7 +167,6 @@ struct GpuMclData{
         d_ids.release();
         d_instance_bucket_ids.release();
         d_bn_exponents.release();
-        dmax_value.release();
         d_modulus.release();
         d_field_modulus.release();
         d_t_zero.release();
@@ -143,67 +181,6 @@ struct GpuMclData{
     ~GpuMclData(){
         release();
     }
-
-    void reinit(){
-        //release();
-        //init();
-        //h_values.release_host();
-        //h_bn_exponents.release_host();
-        //d_values.release();
-        //d_partial.release();
-        for(int i = 0; i < 1; i++){
-            //d_values2[i].release();
-            //d_buckets[i].release();
-            //d_buckets2[i].release();
-            //d_block_sums[i].release();
-            //d_block_sums2[i].release();
-        }
-        //d_scalars.release();
-        //h_scalars.release_host();
-        //d_field_one.release();
-        //d_field_zero.release();
-        //d_density.release();
-        //d_flags.release();
-        //d_counters.release();
-        //d_counters2.release();
-        ///d_index_it.release();
-        //d_firsts.release();
-        //d_seconds.release();
-        //d_bucket_counters.release();
-        //d_starts.release();
-        //d_indexs.release();
-        //d_ids.release();
-        //d_instance_bucket_ids.release();
-        //d_bn_exponents.release();
-        //dmax_value.release();
-        //d_modulus.release();
-        //d_field_modulus.release();
-        //d_t_zero.release();
-        //d_t_one.release();
-        //d_one.release();
-        //d_p.release();
-        //d_a.release();
-        //d_a2.release();
-
-        //dmax_value.resize(1);
-        //d_t_zero.init(1);
-        //d_t_one.init(1);
-        //d_one.init(1);
-        //d_p.init(1);
-        //d_a.init(1);
-        //d_a2.init(1);
-        //d_field_zero.init(1);
-        //d_field_one.init(1);
-        //d_modulus.resize(1);
-        //d_field_modulus.resize(1);
-        //d_values2.resize(1);
-        //d_buckets.resize(1);
-        //d_buckets2.resize(1);
-        //d_block_sums.resize(1);
-        //d_block_sums2.resize(1);
-        //d_density.resize(1);
-    }
-
 };
 
 template<typename T, typename FieldT>
