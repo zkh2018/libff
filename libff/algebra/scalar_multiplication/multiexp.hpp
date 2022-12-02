@@ -71,14 +71,16 @@ struct GpuMclData{
     gpu::Buffer<uint64_t, 1> d_index_it;
     gpu::Buffer<char, 1> d_density, d_flags;
     gpu::Buffer<gpu::Int, gpu::N> d_bn_exponents, h_bn_exponents, d_modulus, d_field_modulus;
-    cudaStream_t stream;
+    //cudaStream_t stream;
     gpu::Buffer<gpu::Int, gpu::N> d_one, d_p, d_a;
     gpu::Buffer2<gpu::Int, gpu::N> d_a2;
     int max_depth = 0;
     gpu::GPUContext* gpu_ctx_;
     gpu::CPUContext* cpu_ctx_ = new gpu::CPUContext();
+    gpu::GPUStream stream_;
     void init(){
-        gpu::create_stream(&stream);
+        //gpu::create_stream(&stream);
+        stream_.create();
         d_t_zero.resize(gpu_ctx_, 1);
         d_t_one.resize(gpu_ctx_, 1);
         d_field_zero.resize(gpu_ctx_, 1);
@@ -141,7 +143,8 @@ struct GpuMclData{
         d_p.release();
         d_a.release();
         d_a2.release();
-        gpu::release_stream(stream);
+        //gpu::release_stream(stream);
+        stream_.destroy();
     }
 
     ~GpuMclData(){
