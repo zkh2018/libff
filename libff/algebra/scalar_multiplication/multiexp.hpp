@@ -17,13 +17,9 @@
 #include "prover_config.hpp"
 
 #ifdef USE_GPU
-#include "cgbn_math.h"
-#include "cgbn_fp.h"
 #include "common.h"
 #include "cgbn_alt_bn128_g1.h"
 #include "cgbn_alt_bn128_g2.h"
-#include "cgbn_multi_exp.h"
-//#include "cgbn_multi_exp_g2.h"
 #include "low_func_gpu.h"
 #include <cuda_runtime.h>
 #endif
